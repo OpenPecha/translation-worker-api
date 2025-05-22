@@ -380,7 +380,6 @@ def translate_segments(
     # Log batch information
     batch_lengths = [len(batch) for batch in batched_segments]
     logger.info(f"[{message_id}] Created {len(batched_segments)} batches with batch_size={batch_size}")
-    logger.info(f"[{message_id}] Batch character lengths: {batch_lengths}")
     logger.info(f"[{message_id}] Largest batch: {max(batch_lengths)} chars, Smallest batch: {min(batch_lengths)} chars")
     
     total_batches = len(batched_segments)
