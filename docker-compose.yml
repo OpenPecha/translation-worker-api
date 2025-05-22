@@ -1,0 +1,107 @@
+version: "3.8"
+
+services:
+  # Redis service
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - translation-network
+
+  # FastAPI application
+  api:
+    build: .
+    image: pecha-translation-api
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=
+      - API_BASE_URL=http://api:8000
+      - PYTHONPATH=/app
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - translation-network
+    command: python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery worker
+  worker:
+    build: .
+    image: pecha-translation-api
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=
+      - API_BASE_URL=http://api:8000
+      - PYTHONPATH=/app
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - C_FORCE_ROOT=true
+    networks:
+      - translation-network
+    hostname: worker
+    restart: always
+    command: celery -A celery_app worker --loglevel=info --concurrency=2 -Q high_priority,default -n worker@worker
+
+  # Flower dashboard
+  flower:
+    build: .
+    image: pecha-translation-api
+    volumes:
+      - .:/app
+      - ./flower-db:/app/flower-db
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=
+      - PYTHONPATH=/app
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - FLOWER_URL_PREFIX=
+    networks:
+      - translation-network
+    restart: always
+    command: celery --broker=redis://redis:6379/0 flower --address=0.0.0.0 --port=5555 --basic_auth=admin:admin --persistent=True --db=/app/flower-db/flower.db
+
+networks:
+  translation-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  flower-db:
