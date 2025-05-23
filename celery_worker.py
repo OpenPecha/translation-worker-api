@@ -212,7 +212,7 @@ def translate_with_claude(content, model_name, api_key, source_lang=None, target
     client = Anthropic(api_key=api_key)
     
     # Prepare the prompt based on source and target languages
-    prompt = "You are a professional translator that translates text accurately and preserves the original meaning."
+    prompt = "You are a professional translator that translates text accurately and preserves the original meaning and please dont include `Here is the translation to English` this kind of description in the response"
     prompt += "\n\nTranslate the following text TO " + target_lang + ":\n\n" + content
     
     try:
