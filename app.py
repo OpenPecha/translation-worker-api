@@ -197,5 +197,12 @@ if __name__ == "__main__":
     # flower_thread = start_flower_dashboard()
     
     
-    # Run the FastAPI server
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    # Run the FastAPI server with increased request size limit
+    uvicorn.run(
+        "app:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=True,
+        limit_concurrency=100,
+        limit_max_request_size=100*1024*1024  # 100MB max request size
+    )

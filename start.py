@@ -48,12 +48,14 @@ def start_celery_worker():
 def start_fastapi_server():
     """Start the FastAPI server in a separate process"""
     
-    # Command to start FastAPI server
+    # Command to start FastAPI server with increased request size limit
     cmd = [
         sys.executable, "-m", "uvicorn", 
         "app:app", 
         "--host", "0.0.0.0", 
-        "--port", "8000"
+        "--port", "8000",
+        "--limit-concurrency", "100",
+        "--limit-max-request-size", str(100 * 1024 * 1024)  # 100MB max request size
     ]
     
     # Start the process
