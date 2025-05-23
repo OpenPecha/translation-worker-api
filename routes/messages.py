@@ -93,6 +93,7 @@ async def add_message(message: Message = Body(...)):
             "api_key": message.api_key,
             "priority": message.priority if message.priority is not None else 0,
             "status": json.dumps(status.model_dump()),
+            "webhook": message.webhook,
             "created_at": time.time()
         }
         

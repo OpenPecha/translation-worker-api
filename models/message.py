@@ -26,7 +26,7 @@ class Message(BaseModel):
     api_key: str = Field(..., description="API key for the translation model")
     priority: Optional[int] = Field(0, description="Priority level (higher numbers = higher priority)")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata for the translation job")
-    
+    webhook: Optional[str] = Field(None, description="Optional webhook URL for status updates")
     model_config = {
         "protected_namespaces": (),
         "json_schema_extra": {

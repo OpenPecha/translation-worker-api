@@ -277,6 +277,7 @@ def process_message(message):
         content = message['content']
         model_name = message['model_name']
         api_key = message['api_key']
+        webhook = message.get('webhook')  # Get webhook URL if provided
         
         # Log message details
         content_length = len(content) if isinstance(content, str) else "non-string"
@@ -452,6 +453,50 @@ def process_message(message):
                 
                 redis_time = time.time() - redis_start
                 logger.info(f"[{message_id}] Redis operations completed in {redis_time:.2f} seconds")
+                
+                # Send webhook notification if webhook URL is provided
+                if 'webhook' in message_data and message_data['webhook']:
+                    webhook_url = message_data['webhook']
+                    logger.info(f"[{message_id}] Sending webhook notification to {webhook_url}")
+                    
+                    try:
+                        webhook_payload = {
+                            "content": result["translated_text"],
+                            "message_id": message_id,
+                            "status": "completed",
+                            "model_used": model_name
+                        }
+                        
+                        # Add metadata to webhook payload if available
+                        if 'metadata' in message_data and message_data['metadata']:
+                            try:
+                                webhook_payload["metadata"] = json.loads(message_data['metadata'])
+                            except:
+                                # If metadata can't be parsed as JSON, use it as is
+                                webhook_payload["metadata"] = message_data['metadata']
+                        
+                        # Send the webhook POST request
+                        webhook_start = time.time()
+                        webhook_response = requests.post(
+                            webhook_url,
+                            json=webhook_payload,
+                            headers={"Content-Type": "application/json"},
+                            timeout=10  # 10 second timeout
+                        )
+                        
+                        webhook_time = time.time() - webhook_start
+                        
+                        # Log webhook response
+                        if webhook_response.status_code >= 200 and webhook_response.status_code < 300:
+                            logger.info(f"[{message_id}] Webhook notification sent successfully in {webhook_time:.2f} seconds. Status: {webhook_response.status_code}")
+                        else:
+                            logger.warning(f"[{message_id}] Webhook notification failed. Status: {webhook_response.status_code}, Response: {webhook_response.text}")
+                    
+                    except Exception as webhook_error:
+                        logger.error(f"[{message_id}] Error sending webhook notification: {str(webhook_error)}")
+                        logger.exception(webhook_error)
+                else:
+                    logger.info(f"[{message_id}] No webhook URL provided, skipping notification")
                     
                 # Status is already updated in Redis directly, no need for another API call
                 logger.info(f"[{message_id}] Translation completed. Length: {len(result['translated_text'])} characters.")
