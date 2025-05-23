@@ -190,11 +190,11 @@ def start_flower_dashboard():
 if __name__ == "__main__":
     import uvicorn
     
-    # Start Celery worker in a separate process
-    worker_thread = start_celery_worker()
+    # # Start Celery worker in a separate process
+    # worker_thread = start_celery_worker()
     
-    # Start Flower dashboard in a separate process
-    flower_thread = start_flower_dashboard()
+    # # Start Flower dashboard in a separate process
+    # flower_thread = start_flower_dashboard()
     
     
     # Run the FastAPI server
