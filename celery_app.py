@@ -276,7 +276,7 @@ def process_message(self, message_data):
                         "message_id": message_id,
                         "status": "completed",
                         "progress": 100,
-                        "translated_text": result["translated_text"],
+                        "content": result["translated_text"],
                         "model_used": model_name,
                         "completed_at": time.time()
                     }
