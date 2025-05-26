@@ -45,32 +45,36 @@ redis_client = redis.Redis(
 @router.post("", response_model=MessageResponse, status_code=201)
 async def add_message(message: Message = Body(...)):
     """
-    Add a new translation task to the queue with the specified content, model, and API key
-    
-    Example:
-    ```json
-{
-  "content": "ཉེ་ཆར་ཇག་ ཁེ་རོ་ཨག་གིས་བརྩམས་པའི་ “ལམ་ལ་”ཞེས་པའི་དེབ་དེ་འགྲེམ་སྤེལ་གྱི་བརྡ་སྦྱོར་ཐོག་མར་སྤེལ་སྐབས།  འཕྲལ་དུ་“ཕམ་པའི་མི་རབས་”ཞེས་པའི་ཐ་སྙད་ཀྱི་སྐོར་ནས་སྐྱོན་བརྗོད་དམ་བསམ་འཆར་བཏོན་པ་འགའ་ཞིག་སྤྱི་ཚོགས་དྲ་ལམ་ནས་མཐོང་བྱུང་།  བསམ་འཆར་འདིའི་གྲས་ལ་སྐྱོན་བརྗོད་ཅེས་བརྗོད་ན་ཏག་ཏག་ཡིན་མིན་ཆ་མ་འཚལ།   གང་ལྟར་ཡང་སྐྱོན་བརྗོད་དམ་དགག་གཞག་སྤོང་གསུམ་གྱི་བརྒྱུད་རིམ་འདི་ལ་མ ་དག་པ་བཅོ་བ་དང་དག་པ་སྤེལ་བར་བྱེད་པའི་ཕན་ཐོགས་ཡོད་པ་ནི་ཧཞེས་པ་ཡིན་ཞེས་འགྲེལ་བཤད་བརྒྱབ་སོང་།",
-  "metadata": {
-    "source_language": "tibetan",
-    "target_language": "english"
-  },
-  "model_name": "claude-3-haiku-20240307",
-  "priority": 5,
-  "api_key": "model api key"
-}
-    ```
-    
-    Returns:
+    Add a new translation task to the queue.
+
+    Adds a new translation task with the specified content, model, and API key.
+
+    ### Request Example
+
     ```json
     {
-        "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-        "status": {
-            "progress": 0.0,
-            "status_type": "pending",
-            "message": "Queued for translation"
-        },
-        "position": null
+      "content": "ཉེ་ཆར་ཇག་ ...",
+      "metadata": {
+        "source_language": "tibetan",
+        "target_language": "english"
+      },
+      "model_name": "claude-3-haiku-20240307",
+      "priority": 5,
+      "api_key": "model api key"
+    }
+    ```
+
+    ### Response Example
+
+    ```json
+    {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "status": {
+        "progress": 0.0,
+        "status_type": "pending",
+        "message": "Queued for translation"
+      },
+      "position": null
     }
     ```
     """

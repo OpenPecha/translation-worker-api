@@ -116,6 +116,7 @@ def task_revoked_handler(request, terminated, signum, **kwargs):
     acks_late=True          # Acknowledge after task completes
 )
 def process_message(self, message_data):
+    
     """
     Process a translation message with automatic retry on failure
     
@@ -138,6 +139,8 @@ def process_message(self, message_data):
         content = message_data.get('content')
         model_name = message_data.get('model_name')
         api_key = message_data.get('api_key')
+        webhook = message_data.get('webhook')  # Get webhook URL if provided
+        
         
         # Store the task ID in Redis for later termination if needed
         task_id = self.request.id
@@ -263,6 +266,46 @@ def process_message(self, message_data):
                 status_type="completed",
                 message=f"Translation completed successfully. Length: {len(result['translated_text'])} characters."
             )
+            
+            # Send webhook notification if webhook URL was provided
+            if webhook:
+                try:
+                    import requests
+                    # Prepare webhook payload
+                    webhook_payload = {
+                        "message_id": message_id,
+                        "status": "completed",
+                        "progress": 100,
+                        "translated_text": result["translated_text"],
+                        "model_used": model_name,
+                        "completed_at": time.time()
+                    }
+                    
+                    # Add metadata if available
+                    if metadata:
+                        webhook_payload["metadata"] = metadata
+                    
+                    # Send webhook notification
+                    logger.info(f"Sending webhook notification to {webhook}")
+                    webhook_response = requests.post(
+                        webhook,
+                        json=webhook_payload,
+                        headers={"Content-Type": "application/json"},
+                        timeout=10  # Set a reasonable timeout
+                    )
+                    
+                    # Log webhook response
+                    if webhook_response.status_code >= 200 and webhook_response.status_code < 300:
+                        logger.info(f"Webhook notification sent successfully to {webhook}")
+                    else:
+                        logger.warning(f"Webhook notification failed with status code {webhook_response.status_code}: {webhook_response.text}")
+                except Exception as webhook_error:
+                    # Log webhook error but don't fail the task
+                    logger.error(f"Failed to send webhook notification: {str(webhook_error)}")
+            
+            
+            
+            
             
             
             return {
