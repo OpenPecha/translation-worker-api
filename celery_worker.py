@@ -92,12 +92,12 @@ def translate_text(message_id, content, model_name, api_key, source_lang=None, t
         # Determine which AI service to use based on model name
         if model_name.startswith("gpt") or model_name.startswith("text-davinci"):
             # Use OpenAI
-            translation = translate_with_openai(content, model_name, api_key, source_lang, target_lang)
+            translation = translate_with_openai(content, model_name, api_key, target_lang)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "OpenAI translation in progress")
         elif model_name.startswith("claude"):
             # Use Claude AI
-            translation = translate_with_claude(content, model_name, api_key, source_lang, target_lang)
+            translation = translate_with_claude(content, model_name, api_key, target_lang)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "Claude AI translation in progress")
         else:
@@ -130,7 +130,7 @@ def translate_text(message_id, content, model_name, api_key, source_lang=None, t
 
 
 
-def translate_with_openai(content, model_name, api_key, source_lang=None, target_lang="English"):
+def translate_with_openai(content, model_name, api_key, target_lang="English"):
     """
     Translate text using OpenAI's API
     """
@@ -140,20 +140,14 @@ def translate_with_openai(content, model_name, api_key, source_lang=None, target
     client = OpenAI(api_key=api_key)
     
     # Prepare the system prompt based on source and target languages
-    system_prompt = "You are a professional translator."
-    if source_lang and target_lang:
-        system_prompt += f" Translate the following text from {source_lang} to {target_lang}."
-    elif target_lang:
-        system_prompt += f" Translate the following text to {target_lang}."
-    else:
-        system_prompt += " Translate the following text to English."
+    prompt = f"You are a professional translator who translates text accurately while preserving the original meaning and formatting. Ensure that all newlines in the input are preserved exactly as they are. Do not include any introductory phrases like “Here is the translation to English” in your response—just return the translated text only.\n\nTranslate the following text to {target_lang}:\n\n{content}"
     
     try:
         # Call the OpenAI API for translation using the new v1.0.0+ style
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": prompt},
                 {"role": "user", "content": content}
             ],
             temperature=0.3,  # Lower temperature for more accurate translations
@@ -169,7 +163,7 @@ def translate_with_openai(content, model_name, api_key, source_lang=None, target
         raise
 
 
-def translate_with_claude(content, model_name, api_key, source_lang=None, target_lang="English"):
+def translate_with_claude(content, model_name, api_key, target_lang="English"):
     """
     Translate text using Anthropic's Claude AI (with input validation)
     """
@@ -178,11 +172,6 @@ def translate_with_claude(content, model_name, api_key, source_lang=None, target
     import time
     
     logger = logging.getLogger(__name__)
-    prompt = "You are a professional translator who translates text accurately while preserving the original meaning and formatting. Ensure that all newlines in the input are preserved exactly as they are. Do not include any introductory phrases like “Here is the translation to English” in your response—just return the translated text only."
-        # Log input parameters
-    content_length = len(content) if isinstance(content, str) else "non-string"
-    logger.info(f"Starting Claude translation - Content length: {content_length}, Model: {model_name}, Source: {source_lang}, Target: {target_lang}")
-    
     # Validate and convert content to string
     if isinstance(content, dict):
         logger.warning(f"Content is a dict: {content}")
@@ -207,16 +196,12 @@ def translate_with_claude(content, model_name, api_key, source_lang=None, target
         logger.error("Content is empty or contains only whitespace")
         raise ValueError("Content is empty or contains only whitespace")
     
-    # Log content length after conversion
-    logger.info(f"Content after conversion - Length: {len(content)} chars")
-    if len(content) > 1000:
-        logger.debug(f"Content preview: {content[:200]}...{content[-200:]}")
-    
     # Configure Anthropic client with the provided API key
     client = Anthropic(api_key=api_key)
     
     # Prepare the prompt based on source and target languages
-    prompt += "\n\nTranslate the following text to " + target_lang + ":\n\n" + content
+    
+    prompt = f"You are a professional translator who translates text accurately while preserving the original meaning and formatting. Ensure that all newlines in the input are preserved exactly as they are. Do not include any introductory phrases like “Here is the translation to English” in your response—just return the translated text only.\n\nTranslate the following text to {target_lang}:\n\n{content}"
     
     try:
         # Log API call start time
