@@ -158,13 +158,16 @@ def split_by_length(text: str, max_length: int = 800) -> List[str]:
     
     return [c for c in chunks if c.strip()]
 
+# Constant for maximum characters per batch
+MAX_BATCH_CHARS = 1000
+
 def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT_BATCH_SIZE", 10))) -> List[str]:
     """
-    Combine segments into batches of specified size.
+    Combine segments into batches with a maximum of 1000 characters per batch.
     
     Args:
         segments (List[str]): List of text segments to batch
-        batch_size (int): Number of segments to combine in each batch
+        batch_size (int): Maximum number of segments to combine in each batch (secondary constraint)
         
     Returns:
         List[str]: List of batched segments
@@ -175,23 +178,43 @@ def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT
     batched_segments = []
     current_batch = []
     current_length = 0
-    max_length = int(os.getenv("MAX_CHAR_LENGTH", 4000))  # Maximum length for a batch to avoid token limits
     
     for segment in segments:
-        # If adding this segment would exceed max_length, start a new batch
-        if current_length + len(segment) > max_length and current_batch:
+        segment_length = len(segment)
+        
+        # If this segment alone exceeds the max character limit, we need to split it
+        if segment_length > MAX_BATCH_CHARS:
+            logger.warning(f"Segment exceeds maximum character limit ({segment_length} > {MAX_BATCH_CHARS}). Splitting segment.")
+            # If we have any segments in the current batch, add them as a batch first
+            if current_batch:
+                batched_segments.append("\n\n".join(current_batch))
+                current_batch = []
+                current_length = 0
+            
+            # Split the long segment and add each part as its own batch
+            sub_segments = split_by_length(segment, MAX_BATCH_CHARS)
+            for sub_segment in sub_segments:
+                batched_segments.append(sub_segment)
+            
+            # Continue to the next segment
+            continue
+        
+        # If adding this segment would exceed the character limit, start a new batch
+        if current_length + segment_length > MAX_BATCH_CHARS and current_batch:
             batched_segments.append("\n\n".join(current_batch))
             current_batch = []
             current_length = 0
         
-        # If current batch has reached batch_size, start a new batch
-        if len(current_batch) >= batch_size and current_batch:
-            batched_segments.append("\n\n".join(current_batch))
-            current_batch = []
-            current_length = 0
-        
+        # Add the segment to the current batch
         current_batch.append(segment)
-        current_length += len(segment)
+        current_length += segment_length
+        
+        # If current batch has reached the maximum number of segments, start a new batch
+        # This is a secondary constraint after the character limit
+        if len(current_batch) >= batch_size:
+            batched_segments.append("\n\n".join(current_batch))
+            current_batch = []
+            current_length = 0
     
     # Add the last batch if it's not empty
     if current_batch:

@@ -148,32 +148,25 @@ async def get_message_status(message_id: str):
         except json.JSONDecodeError:
             status_data = {"progress": 0, "status_type": "pending", "message": None}
         
-        # If the message is completed, return the translation result
+        # Create base response with id and status
+        response = {
+            "id": message_id,
+            "status": status_data
+        }
+        
+        # If the message is completed, add the translation result
         if status_data.get("status_type") == "completed":
             # Get translation result
             result_data = redis_client.hgetall(f"translation_result:{message_id}")
             
             if result_data and "translated_text" in result_data:
-                return {
-                    "id": message_id,
-                    "status": status_data,
-                    # "translated_text": result_data.get("translated_text"),
-                    "model_used": result_data.get("model_used"),
-                    "completed_at": result_data.get("completed_at")
-                }
-            
-            # If no result found but status is completed
-            return {
-                "id": message_id,
-                "status": status_data,
-                "message": "Translation completed but result not found"
-            }
+                response["translated_text"] = result_data.get("translated_text")
+                response["model_used"] = result_data.get("model_used")
+                response["completed_at"] = result_data.get("completed_at")
+            else:
+                response["message"] = "Translation completed but result not found"
         
-        # For non-completed messages, just return the status
-        return {
-            "id": message_id,
-            "status": status_data
-        }
+        return response
         
     except HTTPException:
         raise
