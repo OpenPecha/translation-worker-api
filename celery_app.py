@@ -170,7 +170,10 @@ def process_message(self, message_data):
             message_id=message_id,
             progress=0,
             status_type="started",
-            message=f"Translation started (attempt {self.request.retries + 1})"
+            message=f"Translation started (attempt {self.request.retries + 1})",
+            webhook_url=webhook,
+            model_name=model_name,
+            metadata=metadata
         )
         
         # Step 1: Segment the text into smaller chunks
@@ -178,7 +181,10 @@ def process_message(self, message_data):
             message_id=message_id,
             progress=5,
             status_type="started",
-            message="Segmenting text for translation"
+            message="Segmenting text for translation",
+            webhook_url=webhook,
+            model_name=model_name,
+            metadata=metadata
         )
         
         segments = segment_text(content, language=source_lang)
@@ -192,7 +198,10 @@ def process_message(self, message_data):
             message_id=message_id,
             progress=10,
             status_type="started",
-            message=f"Starting batch translation with {segment_count} segments"
+            message=f"Starting batch translation with {segment_count} segments",
+            webhook_url=webhook,
+            model_name=model_name,
+            metadata=metadata
         )
         
         # Get batch size from environment or use default
@@ -259,49 +268,17 @@ def process_message(self, message_data):
                 except Exception as e:
                     logger.warning(f"Could not update message status with translated text: {str(e)}")
             
-            # Update status to completed
+            # Update status to completed and send webhook with translated text
             update_status(
                 message_id=message_id,
                 progress=100,
                 status_type="completed",
-                message=f"Translation completed successfully. Length: {len(result['translated_text'])} characters."
+                message=f"Translation completed successfully. Length: {len(result['translated_text'])} characters.",
+                webhook_url=webhook,
+                translated_text=result["translated_text"],
+                model_name=model_name,
+                metadata=metadata
             )
-            
-            # Send webhook notification if webhook URL was provided
-            if webhook:
-                try:
-                    import requests
-                    # Prepare webhook payload
-                    webhook_payload = {
-                        "message_id": message_id,
-                        "status": "completed",
-                        "progress": 100,
-                        "content": result["translated_text"],
-                        "model_used": model_name,
-                        "completed_at": time.time()
-                    }
-                    
-                    # Add metadata if available
-                    if metadata:
-                        webhook_payload["metadata"] = metadata
-                    
-                    # Send webhook notification
-                    logger.info(f"Sending webhook notification to {webhook}")
-                    webhook_response = requests.post(
-                        webhook,
-                        json=webhook_payload,
-                        headers={"Content-Type": "application/json"},
-                        timeout=10  # Set a reasonable timeout
-                    )
-                    
-                    # Log webhook response
-                    if webhook_response.status_code >= 200 and webhook_response.status_code < 300:
-                        logger.info(f"Webhook notification sent successfully to {webhook}")
-                    else:
-                        logger.warning(f"Webhook notification failed with status code {webhook_response.status_code}: {webhook_response.text}")
-                except Exception as webhook_error:
-                    # Log webhook error but don't fail the task
-                    logger.error(f"Failed to send webhook notification: {str(webhook_error)}")
             
             
             
@@ -322,7 +299,10 @@ def process_message(self, message_data):
             message_id=message_id,
             progress=0,
             status_type="pending",
-            message=f"Translation failed, retrying... (attempt {self.request.retries + 1})"
+            message=f"Translation failed, retrying... (attempt {self.request.retries + 1})",
+            webhook_url=webhook,
+            model_name=model_name,
+            metadata=metadata
         )
         
         try:
@@ -334,22 +314,29 @@ def process_message(self, message_data):
                 message_id=message_id,
                 progress=0,
                 status_type="failed",
-                message=f"Translation failed after {self.max_retries} attempts: {str(exc)}"
+                message=f"Translation failed after {self.max_retries} attempts: {str(exc)}",
+                webhook_url=webhook,
+                model_name=model_name,
+                metadata=metadata
             )
             
             # Re-raise the exception
             raise
 
 @celery_app.task(name="update_status")
-def update_status(message_id, progress, status_type, message=None):
+def update_status(message_id, progress, status_type, message=None, webhook_url=None, translated_text=None, model_name=None, metadata=None):
     """
-    Update the status of a translation job
+    Update the status of a translation job and send webhook notification if webhook_url is provided
     
     Args:
         message_id (str): Unique identifier for the translation job
         progress (float): Progress percentage (0-100)
         status_type (str): Status type (pending, started, completed, failed)
         message (str, optional): Status message or error details
+        webhook_url (str, optional): URL to send webhook notifications to
+        translated_text (str, optional): Translated text (only sent when progress is 100%)
+        model_name (str, optional): Model used for translation
+        metadata (dict, optional): Additional metadata to include in webhook
     
     Returns:
         bool: True if status was updated successfully, False otherwise
@@ -381,12 +368,93 @@ def update_status(message_id, progress, status_type, message=None):
             json.dumps(status_data)
         )
         
+        # Send webhook notification if webhook_url is provided
+        if webhook_url:
+            send_webhook_notification(
+                message_id=message_id,
+                progress=progress,
+                status_type=status_type,
+                message=message,
+                translated_text=translated_text if progress == 100 else None,
+                model_name=model_name,
+                metadata=metadata,
+                webhook_url=webhook_url
+            )
+        
         return True
     except redis.RedisError as e:
         logger.error(f"Redis error when updating status for message {message_id}: {str(e)}")
         return False
     except (ValueError, TypeError) as e:
         logger.error(f"Data error when updating status for message {message_id}: {str(e)}")
+        return False
+
+def send_webhook_notification(message_id, progress, status_type, message=None, translated_text=None, model_name=None, metadata=None, webhook_url=None):
+    """
+    Send a webhook notification with the current status of a translation job
+    
+    Args:
+        message_id (str): Unique identifier for the translation job
+        progress (float): Progress percentage (0-100)
+        status_type (str): Status type (pending, started, completed, failed)
+        message (str, optional): Status message or error details
+        translated_text (str, optional): The translated text (only sent when progress is 100%)
+        model_name (str, optional): The model used for translation
+        metadata (dict, optional): Additional metadata to include in the webhook
+        webhook_url (str, optional): The webhook URL to send the notification to
+        
+    Returns:
+        bool: True if webhook was sent successfully, False otherwise
+    """
+    if not webhook_url:
+        return False
+        
+    try:
+        import requests
+        import time
+        
+        # Prepare webhook payload
+        webhook_payload = {
+            "message_id": message_id,
+            "status": status_type,
+            "progress": progress,
+            "message": message
+        }
+        
+        # Only include the translated content when progress is 100%
+        if progress == 100 and translated_text:
+            webhook_payload["content"] = translated_text
+            
+        # Add model information if available
+        if model_name:
+            webhook_payload["model_used"] = model_name
+            
+        # Add timestamp
+        webhook_payload["timestamp"] = time.time()
+        
+        # Add metadata if available
+        if metadata:
+            webhook_payload["metadata"] = metadata
+        
+        # Send webhook notification
+        logger.info(f"Sending webhook notification to {webhook_url} (progress: {progress}%)")
+        webhook_response = requests.post(
+            webhook_url,
+            json=webhook_payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10  # Set a reasonable timeout
+        )
+        
+        # Log webhook response
+        if webhook_response.status_code >= 200 and webhook_response.status_code < 300:
+            logger.info(f"Webhook notification sent successfully to {webhook_url}")
+            return True
+        else:
+            logger.warning(f"Webhook notification failed with status code {webhook_response.status_code}: {webhook_response.text}")
+            return False
+    except Exception as webhook_error:
+        # Log webhook error but don't fail the task
+        logger.error(f"Failed to send webhook notification: {str(webhook_error)}")
         return False
 
 # Helper function to determine which queue to use based on priority
