@@ -157,7 +157,7 @@ async def get_message_status(message_id: str):
                 return {
                     "id": message_id,
                     "status": status_data,
-                    "translated_text": result_data.get("translated_text"),
+                    # "translated_text": result_data.get("translated_text"),
                     "model_used": result_data.get("model_used"),
                     "completed_at": result_data.get("completed_at")
                 }
