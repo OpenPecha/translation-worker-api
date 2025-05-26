@@ -98,7 +98,7 @@ async def add_message(message: Message = Body(...)):
             "priority": message.priority if message.priority is not None else 0,
             "status": json.dumps(status.model_dump()),
             "webhook": message.webhook,
-            "use_segmentation": message.use_segmentation if message.use_segmentation is not None else True,
+            "use_segmentation": str(message.use_segmentation if message.use_segmentation is not None else True).lower(),
             "created_at": time.time()
         }
         

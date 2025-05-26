@@ -140,7 +140,10 @@ def process_message(self, message_data):
         model_name = message_data.get('model_name')
         api_key = message_data.get('api_key')
         webhook = message_data.get('webhook')  # Get webhook URL if provided
-        use_segmentation = message_data.get('use_segmentation', True)  # Get segmentation option, default to True
+        
+        # Convert use_segmentation from string to boolean
+        use_segmentation_str = message_data.get('use_segmentation', 'true')
+        use_segmentation = use_segmentation_str.lower() == 'true' if isinstance(use_segmentation_str, str) else True
         
         
         # Store the task ID in Redis for later termination if needed
