@@ -462,14 +462,8 @@ def translate_segments(
     # Combine all translated batches in the correct order
     ordered_translations = [translated_batches[i] for i in range(total_batches)]
     
-    # Log statistics about the translations
-    translation_lengths = [len(t) for t in ordered_translations]
-    logger.info(f"[{message_id}] Translation complete. Translated batch lengths: {translation_lengths}")
-    logger.info(f"[{message_id}] Largest translated batch: {max(translation_lengths)} chars, Smallest: {min(translation_lengths)} chars")
-    
     # Combine all translated batches
     combined_translation = "\n\n".join(ordered_translations)
-    logger.info(f"[{message_id}] Final combined translation length: {len(combined_translation)} chars")
     
     return {
         "status": "completed",

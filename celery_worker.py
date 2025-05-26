@@ -126,7 +126,11 @@ def translate_text(message_id, content, model_name, api_key, source_lang=None, t
         update_translation_status(message_id, 0, "failed", f"Translation failed: {str(e)}")
         raise
 
-def translate_with_openai(content, model_name, api_key, source_lang=None, target_lang=None):
+
+
+
+
+def translate_with_openai(content, model_name, api_key, source_lang=None, target_lang="English"):
     """
     Translate text using OpenAI's API
     """
@@ -174,8 +178,8 @@ def translate_with_claude(content, model_name, api_key, source_lang=None, target
     import time
     
     logger = logging.getLogger(__name__)
-    
-    # Log input parameters
+    prompt = "You are a professional translator who translates text accurately while preserving the original meaning and formatting. Ensure that all newlines in the input are preserved exactly as they are. Do not include any introductory phrases like “Here is the translation to English” in your response—just return the translated text only."
+        # Log input parameters
     content_length = len(content) if isinstance(content, str) else "non-string"
     logger.info(f"Starting Claude translation - Content length: {content_length}, Model: {model_name}, Source: {source_lang}, Target: {target_lang}")
     
@@ -212,8 +216,7 @@ def translate_with_claude(content, model_name, api_key, source_lang=None, target
     client = Anthropic(api_key=api_key)
     
     # Prepare the prompt based on source and target languages
-    prompt = "You are a professional translator that translates text accurately and preserves the original meaning and please dont include `Here is the translation to English` this kind of description in the response"
-    prompt += "\n\nTranslate the following text TO " + target_lang + ":\n\n" + content
+    prompt += "\n\nTranslate the following text to " + target_lang + ":\n\n" + content
     
     try:
         # Log API call start time
