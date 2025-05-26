@@ -140,6 +140,7 @@ def process_message(self, message_data):
         model_name = message_data.get('model_name')
         api_key = message_data.get('api_key')
         webhook = message_data.get('webhook')  # Get webhook URL if provided
+        use_segmentation = message_data.get('use_segmentation', True)  # Get segmentation option, default to True
         
         
         # Store the task ID in Redis for later termination if needed
@@ -187,8 +188,15 @@ def process_message(self, message_data):
             metadata=metadata
         )
         
-        segments = segment_text(content, language=source_lang)
+        # Use segmentation based on the use_segmentation parameter
+        segments = segment_text(content, language=source_lang, use_segmentation=use_segmentation)
         segment_count = len(segments)
+        
+        # Log segmentation method used
+        if use_segmentation:
+            logger.info(f"Used advanced text segmentation for message {message_id}. Created {segment_count} segments.")
+        else:
+            logger.info(f"Used simple newline-based segmentation for message {message_id}. Created {segment_count} segments.")
         
         # Step 2: Import the translation function
         from celery_worker import translate_text as translate_func

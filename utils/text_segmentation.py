@@ -16,13 +16,14 @@ import os
 # Configure logging
 logger = logging.getLogger("text-segmentation")
 
-def segment_text(text: str, language: Optional[str] = None) -> List[str]:
+def segment_text(text: str, language: Optional[str] = None, use_segmentation: bool = True) -> List[str]:
     """
     Segment text into sentences.
     
     Args:
         text (str): The text to segment
         language (str, optional): Language code to use for segmentation
+        use_segmentation (bool, optional): Whether to use advanced segmentation (True) or simple newline-based segmentation (False)
         
     Returns:
         List[str]: List of text segments
@@ -32,6 +33,18 @@ def segment_text(text: str, language: Optional[str] = None) -> List[str]:
         
     # Clean the text
     text = text.strip()
+    
+    # If use_segmentation is False, simply split by newlines
+    if not use_segmentation:
+        logger.info("Using simple newline-based segmentation as requested")
+        segments = [s.strip() for s in text.split('\n') if s.strip()]
+        
+        # If there are no newlines or very few segments, split by maximum length to avoid too large segments
+        if len(segments) <= 1 or any(len(s) > 1500 for s in segments):
+            logger.info("Text has few or no newlines, applying length-based splitting")
+            segments = split_by_length(text, max_length=1000)
+            
+        return segments
     
     # For Tibetan text, use a different segmentation approach
     if language and language.lower() in ['bo', 'tibetan']:
