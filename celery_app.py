@@ -108,12 +108,9 @@ def task_revoked_handler(request, terminated, signum, **kwargs):
 @celery_app.task(
     name="translate Job",
     bind=True,
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_backoff_max=600,  # Maximum backoff of 10 minutes
-    retry_jitter=True,      # Add randomness to backoff
-    max_retries=2,          # Retry up to 5 times
-    acks_late=True          # Acknowledge after task completes
+    acks_late=True,         # Acknowledge after task completes
+    time_limit=300,         # 5 minutes (300 seconds) time limit
+    soft_time_limit=270     # Soft time limit (4.5 minutes) to allow for graceful shutdown
 )
 def process_message(self, message_data):
     
@@ -129,7 +126,7 @@ def process_message(self, message_data):
     import json
     import time
     import redis
-    from celery.exceptions import MaxRetriesExceededError
+    from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
     from utils.text_segmentation import segment_text, translate_segments, merge_translated_segments
     
     message_id = message_data.get('id')
@@ -304,35 +301,56 @@ def process_message(self, message_data):
         else:
             raise Exception("Translation failed: No translated text returned")
         
+    except SoftTimeLimitExceeded:
+        # Handle soft time limit exceeded - we're approaching the 5 minute limit
+        logger.warning(f"Soft time limit exceeded for message {message_id}. Task will be terminated soon.")
+        
+        # Update status to reflect timeout
+        update_status(
+            message_id=message_id,
+            progress=50,  # Use a mid-point progress value
+            status_type="timeout",
+            message="Translation timed out after 4.5 minutes. The task will be terminated.",
+            webhook_url=webhook if 'webhook' in locals() else None,
+            model_name=model_name if 'model_name' in locals() else None,
+            metadata=metadata if 'metadata' in locals() else None
+        )
+        
+        # Return partial result if available
+        if 'result' in locals() and result and 'translated_text' in result:
+            return {
+                "status": "timeout",
+                "message_id": message_id,
+                "translated_text": result["translated_text"],
+                "message": "Translation timed out but partial results are available"
+            }
+        else:
+            return {
+                "status": "timeout",
+                "message_id": message_id,
+                "message": "Translation timed out before any results were available"
+            }
     except Exception as exc:
-        # Update status to reflect retry
+        # Update status to failed
         update_status(
             message_id=message_id,
             progress=0,
-            status_type="pending",
-            message=f"Translation failed, retrying... (attempt {self.request.retries + 1})",
-            webhook_url=webhook,
-            model_name=model_name,
-            metadata=metadata
+            status_type="failed",
+            message=f"Translation failed: {str(exc)}",
+            webhook_url=webhook if 'webhook' in locals() else None,
+            model_name=model_name if 'model_name' in locals() else None,
+            metadata=metadata if 'metadata' in locals() else None
         )
         
-        try:
-            # Retry the task
-            raise self.retry(exc=exc)
-        except MaxRetriesExceededError:
-            # If max retries exceeded, mark as failed
-            update_status(
-                message_id=message_id,
-                progress=0,
-                status_type="failed",
-                message=f"Translation failed after {self.max_retries} attempts: {str(exc)}",
-                webhook_url=webhook,
-                model_name=model_name,
-                metadata=metadata
-            )
-            
-            # Re-raise the exception
-            raise
+        # Log the error
+        logger.error(f"Translation failed for message {message_id}: {str(exc)}")
+        
+        # Return error information
+        return {
+            "status": "failed",
+            "message_id": message_id,
+            "error": str(exc)
+        }
 
 @celery_app.task(name="update_status")
 def update_status(message_id, progress, status_type, message=None, webhook_url=None, translated_text=None, model_name=None, metadata=None):

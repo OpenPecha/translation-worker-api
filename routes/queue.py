@@ -17,6 +17,9 @@ import os
 import redis
 from dotenv import load_dotenv
 
+# Import celery_app for task termination
+from celery_app import celery_app
+
 # Load environment variables
 load_dotenv()
 
