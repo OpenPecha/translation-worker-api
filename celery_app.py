@@ -98,7 +98,6 @@ def task_revoked_handler(request, terminated, signum, **kwargs):
                         status_type="terminated",
                         message="Translation task was terminated manually"
                     )
-                    logger.info(f"Updated status for message {message_id} to 'terminated'")
             except Exception as e:
                 logger.error(f"Failed to update status for terminated task: {str(e)}")
     except Exception as e:
@@ -138,9 +137,21 @@ def process_message(self, message_data):
         api_key = message_data.get('api_key')
         webhook = message_data.get('webhook')  # Get webhook URL if provided
         
-        # Convert use_segmentation from string to boolean
-        use_segmentation_str = message_data.get('use_segmentation', 'true')
-        use_segmentation = use_segmentation_str.lower() == 'true' if isinstance(use_segmentation_str, str) else True
+        # Get the segmentation method to use
+        use_segmentation = message_data.get('use_segmentation', 'botok')
+        
+        # Handle legacy boolean values (stored as strings)
+        if isinstance(use_segmentation, str):
+            if use_segmentation.lower() == 'true':
+                use_segmentation = 'botok'
+            elif use_segmentation.lower() == 'false':
+                use_segmentation = 'newline'
+        
+        # Validate segmentation method
+        valid_segmentation_methods = [None, 'botok', 'sentence', 'newline']
+        if use_segmentation not in valid_segmentation_methods:
+            logger.warning(f"Invalid segmentation method: {use_segmentation}. Using 'botok' as default.")
+            use_segmentation = 'botok'
         
         
         # Store the task ID in Redis for later termination if needed
@@ -211,7 +222,7 @@ def process_message(self, message_data):
             model_name=model_name,
             metadata=metadata
         )
-        
+   
         # Get batch size from environment or use default
         import os
         batch_size = int(os.getenv("SEGMENT_BATCH_SIZE", 10))

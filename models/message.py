@@ -27,7 +27,7 @@ class Message(BaseModel):
     priority: Optional[int] = Field(0, description="Priority level (higher numbers = higher priority)")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata for the translation job")
     webhook: Optional[str] = Field(None, description="Optional webhook URL for status updates")
-    use_segmentation: Optional[bool] = Field(True, description="Whether to use advanced text segmentation (True) or simple newline-based segmentation (False)")
+    use_segmentation: Optional[str] = Field("botok", description="Segmentation method to use. Options: 'botok' for Tibetan segmentation, 'sentence' for sentence-based, 'newline' for newline-based, or None for no segmentation")
     model_config = {
         "protected_namespaces": (),
         "json_schema_extra": {

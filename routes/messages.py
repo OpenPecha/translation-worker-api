@@ -61,7 +61,7 @@ async def add_message(message: Message = Body(...)):
       "model_name": "claude-3-haiku-20240307",
       "priority": 5,
       "api_key": "model api key",
-      "use_segmentation": "true",
+      "use_segmentation": None || "botok",
       "webhook": ""
     }
     ```
@@ -100,7 +100,7 @@ async def add_message(message: Message = Body(...)):
             "priority": message.priority if message.priority is not None else 0,
             "status": json.dumps(status.model_dump()),
             "webhook": message.webhook,
-            "use_segmentation": str(message.use_segmentation if message.use_segmentation is not None else True).lower(),
+            "use_segmentation": message.use_segmentation if message.use_segmentation is not None else "botok",
             "created_at": time.time()
         }
         

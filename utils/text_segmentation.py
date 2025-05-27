@@ -16,14 +16,18 @@ import os
 # Configure logging
 logger = logging.getLogger("text-segmentation")
 
-def segment_text(text: str, language: Optional[str] = None, use_segmentation: bool = True) -> List[str]:
+def segment_text(text: str, language: Optional[str] = None, use_segmentation: Optional[str] = "botok") -> List[str]:
     """
     Segment text into sentences.
     
     Args:
         text (str): The text to segment
         language (str, optional): Language code to use for segmentation
-        use_segmentation (bool, optional): Whether to use advanced segmentation (True) or simple newline-based segmentation (False)
+        use_segmentation (str, optional): Segmentation method to use:
+            - 'botok': Use botok for Tibetan segmentation (if language is Tibetan)
+            - 'sentence': Use sentence-based segmentation
+            - 'newline': Use simple newline-based segmentation
+            - None: No segmentation, treat the entire text as one segment
         
     Returns:
         List[str]: List of text segments
@@ -34,8 +38,17 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: bo
     # Clean the text
     text = text.strip()
     
-    # If use_segmentation is False, simply split by newlines
-    if not use_segmentation:
+    # Handle None case - no segmentation
+    if use_segmentation is None:
+        logger.info("No segmentation requested, treating text as a single segment")
+        return [text]
+    
+    # Convert to lowercase string for comparison
+    if isinstance(use_segmentation, str):
+        use_segmentation = use_segmentation.lower()
+    
+    # Handle newline-based segmentation
+    if use_segmentation == "newline":
         logger.info("Using simple newline-based segmentation as requested")
         segments = [s.strip() for s in text.split('\n') if s.strip()]
         
@@ -46,31 +59,39 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: bo
             
         return segments
     
-    # For Tibetan text, use a different segmentation approach
-    if language and language.lower() in ['bo', 'tibetan']:
+    # Handle Tibetan segmentation with botok
+    if use_segmentation == "botok":
         try:
+            logger.info("Using botok for Tibetan text segmentation")
             return segment_tibetan_text(text)
         except Exception as e:
-            logger.warning(f"Error segmenting Tibetan text: {str(e)}. Falling back to default segmentation.")
+            logger.warning(f"Error segmenting Tibetan text with botok: {str(e)}. Falling back to default segmentation.")
     
-    # Default segmentation using regex
-    # This pattern matches sentence boundaries:
-    # - End with period, question mark, or exclamation followed by space or end of string
-    # - Handle abbreviations, quotes, and parentheses
-    segments = re.split(r'(?<=[.!?])\s+', text)
-    
-    # Filter out empty segments
-    segments = [s.strip() for s in segments if s.strip()]
-    
-    # If the text is very long but no sentence boundaries were found,
-    # fall back to splitting by newlines or a maximum length
-    if len(segments) <= 1 and len(text) > 1000:
-        # Try splitting by newlines first
-        segments = [s.strip() for s in text.split('\n') if s.strip()]
+    # Default sentence-based segmentation using regex
+    if use_segmentation == "sentence" or use_segmentation is None:
+        logger.info("Using sentence-based segmentation")
+        # This pattern matches sentence boundaries:
+        # - End with period, question mark, or exclamation followed by space or end of string
+        # - Handle abbreviations, quotes, and parentheses
+        segments = re.split(r'(?<=[.!?])\s+', text)
         
-        # If still too long or still just one segment, split by maximum length
-        if len(segments) <= 1 or any(len(s) > 1000 for s in segments):
-            segments = split_by_length(text, max_length=800)
+        # Filter out empty segments
+        segments = [s.strip() for s in segments if s.strip()]
+        
+        # If the text is very long but no sentence boundaries were found,
+        # fall back to splitting by newlines or a maximum length
+        if len(segments) <= 1 and len(text) > 1000:
+            # Try splitting by newlines first
+            segments = [s.strip() for s in text.split('\n') if s.strip()]
+            
+            # If still too long or still just one segment, split by maximum length
+            if len(segments) <= 1 or any(len(s) > 1000 for s in segments):
+                segments = split_by_length(text, max_length=800)
+    else:
+        # Fallback for any unrecognized segmentation method
+        logger.warning(f"Unrecognized segmentation method: {use_segmentation}. Using sentence-based segmentation.")
+        segments = re.split(r'(?<=[.!?])\s+', text)
+        segments = [s.strip() for s in segments if s.strip()]
     
     return segments
 
@@ -277,10 +298,10 @@ def translate_batch(
             with progress_lock:
                 if update_status_func:
                     update_status_func(
-                        message_id, 
-                        progress, 
-                        "started", 
-                        f"Translating batch {batch_index+1}/{total_batches} ({progress}%){retry_msg}"
+                        message_id=message_id, 
+                        progress=progress, 
+                        status_type="started", 
+                        message=f"Translating batch {batch_index+1}/{total_batches} ({progress}%){retry_msg}"
                     )
             
             # Only log on first attempt (no retry)
@@ -293,8 +314,8 @@ def translate_batch(
             
             # Call the translation function
             # Debug log all parameters to identify any issues
-            PROMPT=f"you are a professional translator. please dont include the prefix or suffix. eg: 'the translation for the following is:' alike, dont include it"
-            print(PROMPT)
+            
+            PROMPT=f"you are a professional translator. please dont include the prefix or suffix.i dont want anything like 'Here is the translation of the Tibetan text to English: ' and similar things in the responce: "
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
             result = translate_func(
@@ -311,7 +332,6 @@ def translate_batch(
             # Extract the translated text
             if isinstance(result, dict) and "translated_text" in result:
                 translated_text = result["translated_text"]
-                logger.info(f"[{message_id}] Batch {batch_index+1} translated successfully, output length: {len(translated_text)} chars")
                 if len(translated_text) > 500:
                     logger.debug(f"[{message_id}] Batch {batch_index+1} result preview: {translated_text[:100]}...{translated_text[-100:]}")
             else:
@@ -337,10 +357,10 @@ def translate_batch(
                 with progress_lock:
                     if update_status_func:
                         update_status_func(
-                            message_id, 
-                            progress, 
-                            "started", 
-                            f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
+                            message_id=message_id, 
+                            progress=progress, 
+                            status_type="started", 
+                            message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
                         )
                 
                 logger.info(f"[{message_id}] Waiting {wait_time} seconds before retry {retry_count+1}/{max_retries} for batch {batch_index+1}")
@@ -353,10 +373,10 @@ def translate_batch(
                 with progress_lock:
                     if update_status_func:
                         update_status_func(
-                            message_id, 
-                            progress, 
-                            "started", 
-                            f"Translation failed after {max_retries} attempts. Using source text for batch {batch_index+1}/{total_batches}."
+                            message_id=message_id, 
+                            progress=progress, 
+                            status_type="started", 
+                            message=f"Translation failed after {max_retries} attempts. Using source text for batch {batch_index+1}/{total_batches}."
                         )
     
     # Return the batch index along with the translated text to maintain order
@@ -401,10 +421,6 @@ def translate_segments(
             "model_used": model_name
         }
     
-    # Log the number and size of segments
-    total_chars = sum(len(s) for s in segments)
-    logger.info(f"[{message_id}] Starting translation of {len(segments)} segments, total chars: {total_chars}, target_lang: {target_lang}")
-    logger.info(f"[{message_id}] Segment lengths: {[len(s) for s in segments]}")
     
     # Get max_workers from environment variable if available
     max_workers = int(os.getenv("MAX_TRANSLATION_WORKERS", max_workers))
@@ -413,12 +429,8 @@ def translate_segments(
     batched_segments = batch_segments(segments, batch_size)
     
     # Log batch information
-    batch_lengths = [len(batch) for batch in batched_segments]
-    logger.info(f"[{message_id}] Created {len(batched_segments)} batches with batch_size={batch_size}")
-    logger.info(f"[{message_id}] Largest batch: {max(batch_lengths)} chars, Smallest batch: {min(batch_lengths)} chars")
     
     total_batches = len(batched_segments)
-    logger.info(f"===== STARTING PARALLEL TRANSLATION: {total_batches} batches with {max_workers} workers =====")
     
     # Use a dictionary to store results in order
     translated_batches = {}

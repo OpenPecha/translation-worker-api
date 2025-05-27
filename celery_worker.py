@@ -64,7 +64,6 @@ def update_translation_status(message_id, progress, status_type, message=None):
             json.dumps(status_data)
         )
         
-        logger.info(f"Updated status for message {message_id}: {status_type} ({progress}%)")
         return True
     except Exception as e:
         logger.error(f"Failed to update status for message {message_id}: {str(e)}")
@@ -88,7 +87,6 @@ def translate_text(message_id, content, model_name, api_key, prompt=""):
     """
     update_translation_status(message_id, 0, "started", "Translation in progress")
     content_with_prompt = prompt+":"+content
-    print(content_with_prompt)
     try:
         # Determine which AI service to use based on model name
         if model_name.startswith("gpt") or model_name.startswith("text-davinci"):
@@ -207,13 +205,7 @@ def translate_with_claude(content, model_name, api_key):
     # Configure Anthropic client with the provided API key
     client = Anthropic(api_key=api_key)
     
-    # Prepare the prompt based on source and target languages
     
-    
-    # try:
-        # Log API call start time
-    start_time = time.time()
-        
         # Call the Claude API for translation using the modern SDK format
     response = client.messages.create(
             model=model_name,
@@ -229,15 +221,11 @@ def translate_with_claude(content, model_name, api_key):
     print(response)
         
         # Calculate and log API call duration
-    elapsed_time = time.time() - start_time
-    logger.info(f"Claude API call completed in {elapsed_time:.2f} seconds")
         
         # Extract the translated text from the response
     translated_text = response.content[0].text
         
         # Log translation result statistics
-    translation_length = len(translated_text)
-    logger.info(f"Translation successful - Result length: {translation_length} chars")
      
     return {"translated_text": translated_text}
         
