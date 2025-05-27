@@ -307,7 +307,12 @@ def translate_batch(
             # Call the translation function
             # Debug log all parameters to identify any issues
             
-            PROMPT=f"You are a professional translator. Translate the following text accurately and fluently. Do not include any introductions, explanations, prefixes, or suffixes—only return the translated text.\n\nplease translate the following text to {target_lang} language, source text:"
+            PROMPT = (
+                f"You are a professional translator. Translate the following text accurately and fluently into {target_lang}. "
+                "Return only the translated text — no introductions, no explanations, no extra formatting. "
+                "Do NOT include phrases like 'The translation is:' or anything similar.\n\n"
+                "source Text:"
+            )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
             result = translate_func(
