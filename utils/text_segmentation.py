@@ -279,13 +279,6 @@ def translate_batch(
     success = False
     translated_text = ""
     
-    # Log batch details
-    logger.info(f"[{message_id}] Starting batch {batch_index+1}/{total_batches}, length: {len(batch)} chars")
-    if len(batch) > 500:
-        logger.info(f"[{message_id}] Batch {batch_index+1} preview: {batch[:100]}...{batch[-100:]}")
-    else:
-        logger.info(f"[{message_id}] Batch {batch_index+1} content: {batch}")
-    
     # Thread-safe progress update
     progress_lock = threading.Lock()
     
@@ -310,12 +303,11 @@ def translate_batch(
             else:
                 logger.info(f"[{message_id}] Retry {retry_count+1}/{max_retries} for batch {batch_index+1}/{total_batches}")
             
-            start_time = time.time()
             
             # Call the translation function
             # Debug log all parameters to identify any issues
             
-            PROMPT=f"you are a professional translator. please dont include the prefix or suffix.i dont want anything like 'Here is the translation of the Tibetan text to English: ' and similar things in the responce: "
+            PROMPT=f"You are a professional translator. Translate the following text accurately and fluently. Do not include any introductions, explanations, prefixes, or suffixes—only return the translated text.\n\nplease translate the following text to {target_lang} language, source text:"
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
             result = translate_func(
@@ -326,18 +318,12 @@ def translate_batch(
                 prompt=PROMPT
             )
             
-            elapsed_time = time.time() - start_time
-            logger.info(f"[{message_id}] Translation API call for batch {batch_index+1} took {elapsed_time:.2f} seconds")
-            
             # Extract the translated text
             if isinstance(result, dict) and "translated_text" in result:
                 translated_text = result["translated_text"]
-                if len(translated_text) > 500:
-                    logger.debug(f"[{message_id}] Batch {batch_index+1} result preview: {translated_text[:100]}...{translated_text[-100:]}")
             else:
                 translated_text = str(result)
-                logger.warning(f"[{message_id}] Batch {batch_index+1} returned unexpected format, converted to string, length: {len(translated_text)} chars")
-            
+            logger.info(f"{translated_text[:20]}...{translated_text[-20:]} translated successfully, output length: {len(translated_text)} chars")
             # If we got here, the translation was successful
             success = True
             
@@ -348,7 +334,6 @@ def translate_batch(
             retry_count += 1
             error_msg = str(e)
             logger.error(f"[{message_id}] Error translating batch {batch_index+1} (attempt {retry_count}/{max_retries}): {error_msg}")
-            logger.exception(e)
             
             if retry_count < max_retries:
                 # Wait for 1 minute before retrying
@@ -363,11 +348,9 @@ def translate_batch(
                             message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
                         )
                 
-                logger.info(f"[{message_id}] Waiting {wait_time} seconds before retry {retry_count+1}/{max_retries} for batch {batch_index+1}")
                 time.sleep(wait_time)
             else:
                 # After 3 failed attempts, use the source text as fallback
-                logger.warning(f"[{message_id}] Batch {batch_index+1}: Using source text after {max_retries} failed attempts.")
                 translated_text = "<failed>"+batch+"</failed>"
                 
                 with progress_lock:

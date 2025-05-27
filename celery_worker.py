@@ -85,18 +85,18 @@ def translate_text(message_id, content, model_name, api_key, prompt=""):
     Returns:
         dict: Translation result with status and translated text
     """
-    update_translation_status(message_id, 0, "started", "Translation in progress")
     content_with_prompt = prompt+":"+content
+    print(content_with_prompt)
     try:
         # Determine which AI service to use based on model name
         if model_name.startswith("gpt") or model_name.startswith("text-davinci"):
             # Use OpenAI
-            translation = translate_with_openai(content_with_prompt, model_name, api_key)
+            translation = translate_with_openai(content=content_with_prompt, model_name=model_name, api_key=api_key)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "OpenAI translation in progress")
         elif model_name.startswith("claude"):
             # Use Claude AI
-            translation = translate_with_claude(content_with_prompt, model_name, api_key)
+            translation = translate_with_claude(content =content_with_prompt, model_name=model_name, api_key=api_key)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "Claude AI translation in progress")
         else:
@@ -191,11 +191,9 @@ def translate_with_claude(content, model_name, api_key):
         else:
             # Convert dict to string as fallback
             content = str(content)
-            logger.warning(f"Converting dict to string: {content[:100]}...")
     elif not isinstance(content, str):
         # Convert other types to string
         content = str(content)
-        logger.warning(f"Converting {type(content)} to string: {content[:100]}...")
     
     # Validate content is not empty
     if not content or not content.strip():
@@ -205,7 +203,7 @@ def translate_with_claude(content, model_name, api_key):
     # Configure Anthropic client with the provided API key
     client = Anthropic(api_key=api_key)
     
-    
+    print("content" ,content)
         # Call the Claude API for translation using the modern SDK format
     response = client.messages.create(
             model=model_name,
