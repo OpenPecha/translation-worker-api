@@ -159,7 +159,7 @@ def split_by_length(text: str, max_length: int = 800) -> List[str]:
     return [c for c in chunks if c.strip()]
 
 # Constant for maximum characters per batch
-MAX_BATCH_CHARS = 1000
+MAX_BATCH_CHARS = 4000
 
 def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT_BATCH_SIZE", 10))) -> List[str]:
     """
@@ -270,8 +270,8 @@ def translate_batch(
     
     while retry_count < max_retries and not success:
         try:
-            # Update progress
-            progress = int((batch_index / total_batches) * 100)
+            # Update progress - calculate based on batch_index + 1 to avoid 0% progress
+            progress = int(((batch_index + 1) / total_batches) * 100) if total_batches > 1 else 50
             retry_msg = f" (Retry {retry_count+1}/{max_retries})" if retry_count > 0 else ""
             
             with progress_lock:
@@ -467,7 +467,10 @@ def translate_segments(
                 
                 # Update overall progress
                 completed += 1
-                overall_progress = int((completed / total_batches) * 100)
+                # Ensure progress is never 0 and reaches 100 when all batches are done
+                overall_progress = max(1, int((completed / total_batches) * 100))
+                if completed == total_batches:
+                    overall_progress = 100
                 
                 # Log progress at certain intervals to avoid log spam
                 if completed == 1 or completed == total_batches or completed % 5 == 0:
