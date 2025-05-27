@@ -60,7 +60,9 @@ async def add_message(message: Message = Body(...)):
       },
       "model_name": "claude-3-haiku-20240307",
       "priority": 5,
-      "api_key": "model api key"
+      "api_key": "model api key",
+      "use_segmentation": "true",
+      "webhook": ""
     }
     ```
 

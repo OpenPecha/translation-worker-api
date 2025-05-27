@@ -71,7 +71,7 @@ def update_translation_status(message_id, progress, status_type, message=None):
         return False
 
 @shared_task(name="celery_worker.translate_text")
-def translate_text(message_id, content, model_name, api_key, source_lang=None, target_lang=None):
+def translate_text(message_id, content, model_name, api_key, prompt=""):
     """
     Translate text using either OpenAI or Claude AI based on the model name
     
@@ -87,17 +87,18 @@ def translate_text(message_id, content, model_name, api_key, source_lang=None, t
         dict: Translation result with status and translated text
     """
     update_translation_status(message_id, 0, "started", "Translation in progress")
-    
+    content_with_prompt = prompt+":"+content
+    print(content_with_prompt)
     try:
         # Determine which AI service to use based on model name
         if model_name.startswith("gpt") or model_name.startswith("text-davinci"):
             # Use OpenAI
-            translation = translate_with_openai(content, model_name, api_key, target_lang)
+            translation = translate_with_openai(content_with_prompt, model_name, api_key)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "OpenAI translation in progress")
         elif model_name.startswith("claude"):
             # Use Claude AI
-            translation = translate_with_claude(content, model_name, api_key, target_lang)
+            translation = translate_with_claude(content_with_prompt, model_name, api_key)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "Claude AI translation in progress")
         else:
@@ -122,15 +123,26 @@ def translate_text(message_id, content, model_name, api_key, source_lang=None, t
         }
         
     except Exception as e:
-        logger.error(f"Translation error with {model_name}: {str(e)}")
+        error_message = f"Translation error with {model_name}: {str(e)}"
+        logger.error(error_message)
+        
+        # Update status as failed
         update_translation_status(message_id, 0, "failed", f"Translation failed: {str(e)}")
-        raise
+        
+        # Return a failed status instead of re-raising the exception
+        # This ensures the error is properly handled and marked as failed
+        return {
+            "status": "failed",
+            "message_id": message_id,
+            "error": str(e),
+            "model_used": model_name
+        }
 
 
 
 
 
-def translate_with_openai(content, model_name, api_key, target_lang="English"):
+def translate_with_openai(content, model_name, api_key):
     """
     Translate text using OpenAI's API
     """
@@ -139,15 +151,11 @@ def translate_with_openai(content, model_name, api_key, target_lang="English"):
     # Configure OpenAI client with the provided API key using the new v1.0.0+ style
     client = OpenAI(api_key=api_key)
     
-    # Prepare the system prompt based on source and target languages
-    prompt = f"You are a professional translator who translates text accurately while preserving the original meaning and formatting. Ensure that all newlines in the input are preserved exactly as they are. Do not include any introductory phrases like “Here is the translation to English” in your response—just return the translated text only.\n\nTranslate the following text to {target_lang}:\n\n{content}"
-    
     try:
         # Call the OpenAI API for translation using the new v1.0.0+ style
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": prompt},
                 {"role": "user", "content": content}
             ],
             temperature=0.3,  # Lower temperature for more accurate translations
@@ -163,7 +171,7 @@ def translate_with_openai(content, model_name, api_key, target_lang="English"):
         raise
 
 
-def translate_with_claude(content, model_name, api_key, target_lang="English"):
+def translate_with_claude(content, model_name, api_key):
     """
     Translate text using Anthropic's Claude AI (with input validation)
     """
@@ -201,48 +209,51 @@ def translate_with_claude(content, model_name, api_key, target_lang="English"):
     
     # Prepare the prompt based on source and target languages
     
-    prompt = f"You are a professional translator who translates text accurately while preserving the original meaning and formatting. Ensure that all newlines in the input are preserved exactly as they are. Do not include any introductory phrases like “Here is the translation to English” in your response—just return the translated text only.\n\nTranslate the following text to {target_lang}:\n\n{content}"
     
-    try:
+    # try:
         # Log API call start time
-        start_time = time.time()
+    start_time = time.time()
         
         # Call the Claude API for translation using the modern SDK format
-        response = client.messages.create(
+    response = client.messages.create(
             model=model_name,
             max_tokens=4000,
             temperature=0.3,  # Lower temperature for more accurate translations
             messages=[
                 {
                     "role": "user",
-                    "content": prompt
+                    "content":content
                 }
             ]
         )
+    print(response)
         
         # Calculate and log API call duration
-        elapsed_time = time.time() - start_time
-        logger.info(f"Claude API call completed in {elapsed_time:.2f} seconds")
+    elapsed_time = time.time() - start_time
+    logger.info(f"Claude API call completed in {elapsed_time:.2f} seconds")
         
         # Extract the translated text from the response
-        translated_text = response.content[0].text
+    translated_text = response.content[0].text
         
         # Log translation result statistics
-        translation_length = len(translated_text)
-        logger.info(f"Translation successful - Result length: {translation_length} chars")
+    translation_length = len(translated_text)
+    logger.info(f"Translation successful - Result length: {translation_length} chars")
      
-        # Calculate and log expansion/compression ratio
-        ratio = translation_length / len(content)
-        logger.info(f"Translation ratio (output/input): {ratio:.2f}")
-        print("prompt:", prompt[:200] + "..." if len(prompt) > 200 else prompt)
-        print("translated text:", translated_text[:200] + "..." if len(translated_text) > 200 else translated_text)
-        return {"translated_text": translated_text}
+    return {"translated_text": translated_text}
         
-    except Exception as e:
-        logger.error(f"Claude AI translation error: {str(e)}")
-        logger.error(f"Content type: {type(content)}, Content length: {len(content) if isinstance(content, str) else 'N/A'}")
-        logger.exception(e)  # Log full stack trace
-        raise
+    # except AttributeError as e:
+    #     # Specific handling for API client attribute errors (e.g., 'Anthropic' object has no attribute 'messages')
+    #     raise ValueError(f"API client configuration error: {str(e)}")
+        
+    # except ValueError as e:
+    #     # Handle value errors, including API key issues
+    #     raise
+        
+    # except Exception as e:
+    #     # General error handling
+    #     logger.error(f"Claude AI translation error: {str(e)}")
+    #     logger.error(f"Content type: {type(content)}, Content length: {len(content) if isinstance(content, str) else 'N/A'}")
+    #     raise
 
 
 

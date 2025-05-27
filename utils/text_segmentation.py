@@ -293,8 +293,8 @@ def translate_batch(
             
             # Call the translation function
             # Debug log all parameters to identify any issues
-            logger.info(f"[{message_id}] Translation parameters - Model: {model_name}, API key: {api_key[:10]}..., Source: {source_lang}, Target: {target_lang}")
-            
+            PROMPT=f"you are a professional translator. please dont include the prefix or suffix. eg: 'the translation for the following is:' alike, dont include it"
+            print(PROMPT)
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
             result = translate_func(
@@ -302,8 +302,7 @@ def translate_batch(
                 content=batch,
                 model_name=model_name,
                 api_key=api_key,
-                source_lang=source_lang,
-                target_lang=target_lang
+                prompt=PROMPT
             )
             
             elapsed_time = time.time() - start_time
