@@ -355,6 +355,18 @@ def translate_batch(
                 
                 time.sleep(wait_time)
             else:
+                # After 3 failed attempts, update status to failed and use placeholder text
+                error_message = f"Failed to translate batch {batch_index+1} after {max_retries} attempts: {error_msg}"
+                
+                with progress_lock:
+                    if update_status_func:
+                        update_status_func(
+                            message_id=message_id, 
+                            progress=progress, 
+                            status_type="failed", 
+                            message=f"Translation failed: {error_message}"
+                        )
+                
                 # After 3 failed attempts, use the source text as fallback
                 translated_text = "<failed>"+batch+"</failed>"
                 
@@ -484,8 +496,19 @@ def translate_segments(
                         f"Completed {completed}/{total_batches} batches ({overall_progress}%)"
                     )
             except Exception as e:
-                logger.error(f"[{message_id}] Error processing batch {future_to_batch[future]+1}: {str(e)}")
+                error_message = f"Error processing batch {future_to_batch[future]+1}: {str(e)}"
+                logger.error(f"[{message_id}] {error_message}")
                 logger.exception(e)
+                
+                # Update status to failed for this batch
+                if update_status_func:
+                    update_status_func(
+                        message_id=message_id,
+                        progress=max(1, int((completed / total_batches) * 100)),
+                        status_type="failed",
+                        message=f"Translation failed: {error_message}"
+                    )
+                
                 # Still need to count this batch as completed even if it failed
                 completed += 1
     

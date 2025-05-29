@@ -320,8 +320,8 @@ def process_message(self, message_data):
         update_status(
             message_id=message_id,
             progress=50,  # Use a mid-point progress value
-            status_type="timeout",
-            message="Translation timed out after 4.5 minutes. The task will be terminated.",
+            status_type="failed",  # Changed from "timeout" to "failed" for consistency
+            message="Translation failed: Task timed out after 4.5 minutes. The task will be terminated.",
             webhook_url=webhook if 'webhook' in locals() else None,
             model_name=model_name if 'model_name' in locals() else None,
             metadata=metadata if 'metadata' in locals() else None
@@ -330,37 +330,41 @@ def process_message(self, message_data):
         # Return partial result if available
         if 'result' in locals() and result and 'translated_text' in result:
             return {
-                "status": "timeout",
+                "status": "failed",  # Changed from "timeout" to "failed" for consistency
                 "message_id": message_id,
                 "translated_text": result["translated_text"],
-                "message": "Translation timed out but partial results are available"
+                "message": "Translation failed: Task timed out but partial results are available"
             }
         else:
             return {
-                "status": "timeout",
+                "status": "failed",  # Changed from "timeout" to "failed" for consistency
                 "message_id": message_id,
-                "message": "Translation timed out before any results were available"
+                "message": "Translation failed: Task timed out before any results were available"
             }
     except Exception as exc:
-        # Update status to failed
+        # Get a detailed error message
+        error_message = f"Translation failed: {str(exc)}"
+        
+        # Update status to failed with the specific error message
         update_status(
             message_id=message_id,
             progress=0,
             status_type="failed",
-            message=f"Translation failed: {str(exc)}",
+            message=error_message,
             webhook_url=webhook if 'webhook' in locals() else None,
             model_name=model_name if 'model_name' in locals() else None,
             metadata=metadata if 'metadata' in locals() else None
         )
         
-        # Log the error
-        logger.error(f"Translation failed for message {message_id}: {str(exc)}")
+        # Log the error with traceback for better debugging
+        logger.error(f"Translation failed for message {message_id}: {error_message}")
+        logger.exception(exc)  # This logs the full traceback
         
         # Return error information
         return {
             "status": "failed",
             "message_id": message_id,
-            "error": str(exc)
+            "error": error_message
         }
 
 @celery_app.task(name="update_status")
