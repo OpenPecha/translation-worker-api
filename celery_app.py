@@ -108,7 +108,7 @@ def task_revoked_handler(request, terminated, signum, **kwargs):
     name="translate Job",
     bind=True,
     acks_late=True,         # Acknowledge after task completes
-    time_limit=300,         # 5 minutes (300 seconds) time limit
+    time_limit=6000,         # 10 minutes (6000 seconds) time limit
     soft_time_limit=270     # Soft time limit (4.5 minutes) to allow for graceful shutdown
 )
 def process_message(self, message_data):
@@ -126,7 +126,7 @@ def process_message(self, message_data):
     import time
     import redis
     from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
-    from utils.text_segmentation import segment_text, translate_segments, merge_translated_segments
+    from utils.text_segmentation import segment_text, translate_segments
     
     message_id = message_data.get('id')
     

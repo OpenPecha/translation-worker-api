@@ -86,7 +86,6 @@ def translate_text(message_id, content, model_name, api_key, prompt=""):
         dict: Translation result with status and translated text
     """
     content_with_prompt = prompt+":"+content
-    print(content_with_prompt)
     try:
         # Determine which AI service to use based on model name
         if model_name.startswith("gpt") or model_name.startswith("text-davinci"):
