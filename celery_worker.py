@@ -70,7 +70,7 @@ def update_translation_status(message_id, progress, status_type, message=None):
         return False
 
 @shared_task(name="celery_worker.translate_text")
-def translate_text(message_id, content, model_name, api_key, prompt=""):
+def translate_text(message_id, model_name, api_key, prompt=""):
     """
     Translate text using either OpenAI or Claude AI based on the model name
     
@@ -85,17 +85,16 @@ def translate_text(message_id, content, model_name, api_key, prompt=""):
     Returns:
         dict: Translation result with status and translated text
     """
-    content_with_prompt = prompt+":"+content
     try:
         # Determine which AI service to use based on model name
         if model_name.startswith("gpt") or model_name.startswith("text-davinci"):
             # Use OpenAI
-            translation = translate_with_openai(content=content_with_prompt, model_name=model_name, api_key=api_key)
+            translation = translate_with_openai(content=prompt, model_name=model_name, api_key=api_key)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "OpenAI translation in progress")
         elif model_name.startswith("claude"):
-            # Use Claude AI
-            translation = translate_with_claude(content =content_with_prompt, model_name=model_name, api_key=api_key)
+            # Use Claude prompt
+            translation = translate_with_claude(content =prompt, model_name=model_name, api_key=api_key)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "Claude AI translation in progress")
         else:

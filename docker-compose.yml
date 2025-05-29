@@ -68,7 +68,7 @@ services:
       - translation-network
     hostname: worker
     restart: always
-    command: celery -A celery_app worker --loglevel=info --concurrency=2 -Q high_priority,default -n worker@worker
+    command: celery -A celery_app worker --loglevel=info --concurrency=2 -Q high_priority,default -n worker@%h
 
   # Flower dashboard
   flower:
@@ -82,6 +82,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      api:
+        condition: service_started
       worker:
         condition: service_started
     environment:

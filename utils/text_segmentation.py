@@ -311,13 +311,12 @@ def translate_batch(
                 f"You are a professional translator. Translate the following text accurately and fluently into {target_lang}. "
                 "Return only the translated text — no introductions, no explanations, no extra formatting. "
                 "Do NOT include phrases like 'The translation is:' or anything similar.\n\n"
-                "source Text:"
+                f"source Text:{batch}"
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
             result = translate_func(
                 message_id=message_id,  # Add the message_id parameter
-                content=batch,
                 model_name=model_name,
                 api_key=api_key,
                 prompt=PROMPT

@@ -32,16 +32,18 @@ class Message(BaseModel):
         "protected_namespaces": (),
         "json_schema_extra": {
             "example": {
-                "content": "Hello world! This text needs to be translated.",
-                "model_name": "gpt-4",
-                "api_key": "sk-your-api-key-here",
-                "priority": 5,
-                "metadata": {
-                    "source_language": "en",
-                    "target_language": "fr",
-                    "domain": "general"
-                }
-            }
+  "api_key": "your api key",
+  "content": "Hello world! This text needs to be translated.",
+  "metadata": {
+    "domain": "general",
+    "source_language": "english",
+    "target_language": "tibetan"
+  },
+  "model_name": "claude-3-haiku-20240307",
+  "priority": 5,
+"use_segmentation":"botok",
+  "webhook": ""
+}
         }
     }
 
