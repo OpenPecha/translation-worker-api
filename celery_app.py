@@ -191,7 +191,7 @@ def process_message(self, message_data):
         # Step 1: Segment the text into smaller chunks
         update_status(
             message_id=message_id,
-            progress=5,
+            progress=1,
             status_type="started",
             message="Segmenting text for translation",
             webhook_url=webhook,
