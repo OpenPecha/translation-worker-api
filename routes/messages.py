@@ -153,19 +153,17 @@ async def get_message_status(message_id: str):
         # Create base response with id and status
         response = {
             "id": message_id,
-            "status": status_data
+            "status": status_data,
         }
         
         # If the message is completed, add the translation result
-        if status_data.get("status_type") == "completed":
-            # Get translation result
-            result_data = redis_client.hgetall(f"translation_result:{message_id}")
+        result_data = redis_client.hgetall(f"translation_result:{message_id}")
             
-            if result_data and "translated_text" in result_data:
+        if result_data and "translated_text" in result_data:
                 response["translated_text"] = result_data.get("translated_text")
                 response["model_used"] = result_data.get("model_used")
                 response["completed_at"] = result_data.get("completed_at")
-            else:
+        else:
                 response["message"] = "Translation completed but result not found"
         
         return response
