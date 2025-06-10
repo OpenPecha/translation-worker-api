@@ -309,7 +309,11 @@ def translate_batch(
             
             PROMPT = (
                 f"{batch}\n\n"
-                f"[1. Translate the above to {target_lang}. 2. Output translation only. 3. preserve all newlines in the translations from source  4. do not add any other text to the output and do not add any line breaks to the output thats not in the source]"
+                f"[1. Translate the above to {target_lang}. \n"
+                f"2. Output translation only. \n"
+                f"3. preserve all newlines in the translations from source  \n"
+                f"4. do not add any other text to the output \n"
+                f"5. source and target translation should have the same number of newlines"
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
@@ -325,6 +329,23 @@ def translate_batch(
                 translated_text = result["translated_text"]
             else:
                 translated_text = str(result)
+            
+            # Count newlines in source and translated text
+            source_newlines = batch.count('\n')
+            translated_newlines = translated_text.count('\n')
+            
+            # Check if newline count matches
+            if source_newlines != translated_newlines:
+                logger.warning(f"[{message_id}] Newline count mismatch in batch {batch_index+1}: "
+                             f"source has {source_newlines} newlines, translation has {translated_newlines} newlines. Retrying.")
+                retry_count += 1
+                if retry_count < max_retries:
+                    
+                    continue  # Retry the translation
+                else:
+                    logger.error(f"[{message_id}] Failed to preserve newlines after {max_retries} attempts for batch {batch_index+1}")
+                    # Continue with the translation even if newlines don't match after max retries
+            
             logger.info(f"{translated_text[:20]}...{translated_text[-20:]} translated successfully, output length: {len(translated_text)} chars")
             # If we got here, the translation was successful
             success = True
