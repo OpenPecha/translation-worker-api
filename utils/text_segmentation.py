@@ -180,7 +180,7 @@ def split_by_length(text: str, max_length: int = 800) -> List[str]:
     return [c for c in chunks if c.strip()]
 
 # Constant for maximum characters per batch
-MAX_BATCH_CHARS = 4000
+MAX_BATCH_CHARS = 6000
 
 def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT_BATCH_SIZE", 10))) -> List[str]:
     """
@@ -311,10 +311,10 @@ def translate_batch(
                 f"{batch}\n\n"
                 f"[1. Translate the above to {target_lang}. \n"
                 f"2. Output translation only. \n"
-                f"3. Preserve exact formatting and spacing from source text.  \n"
+                f"3. Preserve exact formatting and spacing and newlines from source text.  \n"
                 f"4. Do not add line breaks, paragraph breaks, or formatting not present in source. \n"
                 f"5. Do not add any other text to the output. \n"
-                f"6. Translation should be matching source format."
+                f"6. Translation should be matching source format.]"
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter

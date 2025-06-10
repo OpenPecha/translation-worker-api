@@ -38,7 +38,10 @@ def start_celery_worker():
         bufsize=1
     )
     
-    
+        # Log output from the FastAPI server
+    def log_output():
+        for line in process.stdout:
+            logger.info(f"[FastAPI] {line.strip()}")
     # Start logging in a separate thread
     log_thread = threading.Thread(target=log_output, daemon=True)
     log_thread.start()
@@ -53,7 +56,7 @@ def start_fastapi_server():
         sys.executable, "-m", "uvicorn", 
         "app:app", 
         "--host", "0.0.0.0", 
-        "--port", "8000",
+        "--port", "9000",
         "--limit-concurrency", "100",
         "--limit-max-request-size", str(100 * 1024 * 1024)  # 100MB max request size
     ]
