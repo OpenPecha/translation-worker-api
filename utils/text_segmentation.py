@@ -311,9 +311,10 @@ def translate_batch(
                 f"{batch}\n\n"
                 f"[1. Translate the above to {target_lang}. \n"
                 f"2. Output translation only. \n"
-                f"3. preserve all newlines in the translations from source  \n"
-                f"4. do not add any other text to the output \n"
-                f"5. source and target translation should have the same number of newlines"
+                f"3. Preserve exact formatting and spacing from source text.  \n"
+                f"4. Do not add line breaks, paragraph breaks, or formatting not present in source. \n"
+                f"5. Do not add any other text to the output. \n"
+                f"6. Translation should be matching source format."
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
