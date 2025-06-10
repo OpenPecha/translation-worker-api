@@ -329,23 +329,6 @@ def translate_batch(
                 translated_text = result["translated_text"]
             else:
                 translated_text = str(result)
-            
-            # Count newlines in source and translated text
-            source_newlines = batch.count('\n')
-            translated_newlines = translated_text.count('\n')
-            
-            # Check if newline count matches
-            if source_newlines != translated_newlines:
-                logger.warning(f"[{message_id}] Newline count mismatch in batch {batch_index+1}: "
-                             f"source has {source_newlines} newlines, translation has {translated_newlines} newlines. Retrying.")
-                retry_count += 1
-                if retry_count < max_retries:
-                    
-                    continue  # Retry the translation
-                else:
-                    logger.error(f"[{message_id}] Failed to preserve newlines after {max_retries} attempts for batch {batch_index+1}")
-                    # Continue with the translation even if newlines don't match after max retries
-            
             logger.info(f"{translated_text[:20]}...{translated_text[-20:]} translated successfully, output length: {len(translated_text)} chars")
             # If we got here, the translation was successful
             success = True
