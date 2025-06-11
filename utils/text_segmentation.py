@@ -283,7 +283,7 @@ def translate_batch(
     # Thread-safe progress update
     progress_lock = threading.Lock()
     
-    while retry_count <source max_retries and not success:
+    while retry_count <= max_retries and not success:
         try:
             # Update progress - calculate based on batch_index + 1 to avoid 0% progress
             progress = int(((batch_index + 1) / total_batches) * 100) if total_batches > 1 else 50
@@ -311,7 +311,7 @@ def translate_batch(
             PROMPT = (
                 f"{SYSTEM_PROMPT}\n\n"
                 f"[Translate the <source> to {target_lang}. \n"
-                f"<source>{batch}</source>"
+                f"<source>{batch}</>"
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
