@@ -229,7 +229,8 @@ def process_message(self, message_data):
         max_workers = int(os.getenv("MAX_TRANSLATION_WORKERS", 4))
         
         # Translate segments in batches
-        result = translate_segments(
+        import asyncio
+        result = asyncio.run(translate_segments(
             segments=segments,
             translate_func=translate_func,
             message_id=message_id,
@@ -240,7 +241,7 @@ def process_message(self, message_data):
             update_status_func=update_status,
             batch_size=batch_size,
             max_workers=max_workers
-        )
+        ))
         
         # Step 4: Save the translated text to Redis
         if result and 'translated_text' in result:

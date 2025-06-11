@@ -100,8 +100,6 @@ def translate_text(message_id, model_name, api_key, prompt=""):
         else:
             raise ValueError(f"Unsupported model: {model_name}. Please use a model name starting with 'gpt' or 'claude'.")
         
-        # Log completion but don't update status here to avoid redundant updates
-        logger.info(f"Translation API call completed for message {message_id}")
         
         # Handle different return types from translation functions
         if isinstance(translation, dict) and "translated_text" in translation:

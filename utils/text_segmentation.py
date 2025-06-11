@@ -8,8 +8,7 @@ translate each segment individually, and then merge them back together.
 import re
 import logging
 import time
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import asyncio
 from typing import List, Dict, Any, Callable, Optional, Union, Tuple
 import os
 from const import SYSTEM_PROMPT
@@ -41,7 +40,6 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: Op
     
     # Handle None case - no segmentation
     if use_segmentation is None:
-        logger.info("No segmentation requested, treating text as a single segment")
         return [text]
     
     # Convert to lowercase string for comparison
@@ -50,12 +48,10 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: Op
     
     # Handle newline-based segmentation
     if use_segmentation == "newline":
-        logger.info("Using simple newline-based segmentation as requested")
         segments = [s.strip() for s in text.split('\n') if s.strip()]
         
         # If there are no newlines or very few segments, split by maximum length to avoid too large segments
         if len(segments) <= 1 or any(len(s) > 1500 for s in segments):
-            logger.info("Text has few or no newlines, applying length-based splitting")
             segments = split_by_length(text, max_length=1000)
             
         return segments
@@ -63,14 +59,12 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: Op
     # Handle Tibetan segmentation with botok
     if use_segmentation == "botok":
         try:
-            logger.info("Using botok for Tibetan text segmentation")
             return segment_tibetan_text(text)
         except Exception as e:
             logger.warning(f"Error segmenting Tibetan text with botok: {str(e)}. Falling back to default segmentation.")
     
     # Default sentence-based segmentation using regex
     if use_segmentation == "sentence" or use_segmentation is None:
-        logger.info("Using sentence-based segmentation")
         # This pattern matches sentence boundaries:
         # - End with period, question mark, or exclamation followed by space or end of string
         # - Handle abbreviations, quotes, and parentheses
@@ -200,16 +194,14 @@ def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT
     batched_segments = []
     current_batch = []
     current_length = 0
-    
     for segment in segments:
         segment_length = len(segment)
         
         # If this segment alone exceeds the max character limit, we need to split it
         if segment_length > MAX_BATCH_CHARS:
-            logger.warning(f"Segment exceeds maximum character limit ({segment_length} > {MAX_BATCH_CHARS}). Splitting segment.")
             # If we have any segments in the current batch, add them as a batch first
             if current_batch:
-                batched_segments.append("\n\n".join(current_batch))
+                batched_segments.append("\n".join(current_batch))
                 current_batch = []
                 current_length = 0
             
@@ -244,7 +236,7 @@ def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT
     
     return batched_segments
 
-def translate_batch(
+async def translate_batch(
     batch_index: int,
     batch: str,
     translate_func: Callable,
@@ -280,8 +272,8 @@ def translate_batch(
     success = False
     translated_text = ""
     
-    # Thread-safe progress update
-    progress_lock = threading.Lock()
+    # Async lock for progress updates
+    progress_lock = asyncio.Lock()
     
     while retry_count <= max_retries and not success:
         try:
@@ -289,7 +281,7 @@ def translate_batch(
             progress = int(((batch_index + 1) / total_batches) * 100) if total_batches > 1 else 50
             retry_msg = f" (Retry {retry_count+1}/{max_retries})" if retry_count > 0 else ""
             
-            with progress_lock:
+            async with progress_lock:
                 if update_status_func:
                     update_status_func(
                         message_id=message_id, 
@@ -298,20 +290,18 @@ def translate_batch(
                         message=f"Translating batch {batch_index+1}/{total_batches} ({progress}%){retry_msg}"
                     )
             
-            # Only log on first attempt (no retry)
-            if retry_count == 0:
-                logger.info(f"[{message_id}] Translating batch {batch_index+1}/{total_batches}, model: {model_name}, target_lang: {target_lang}")
-            else:
+            # Only log retries
+            if retry_count > 0:
                 logger.info(f"[{message_id}] Retry {retry_count+1}/{max_retries} for batch {batch_index+1}/{total_batches}")
             
             
             # Call the translation function
             # Debug log all parameters to identify any issues
-            
+            source = batch.replace('\n', '</br>')
             PROMPT = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"[Translate the <source> to {target_lang}. \n"
-                f"<source>{batch}</>"
+                f"[Translate the <source> to {target_lang}. ]\n"
+                f"<source>{source}</source>"
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
@@ -324,10 +314,16 @@ def translate_batch(
             
             # Extract the translated text
             if isinstance(result, dict) and "translated_text" in result:
-                translated_text = result["translated_text"]
+                translated_text = result["translated_text"].replace('</br>', '\n')
             else:
-                translated_text = str(result)
-            logger.info(f"{translated_text[:20]}...{translated_text[-20:]} translated successfully, output length: {len(translated_text)} chars")
+                translated_text = str(result).replace('</br>', '\n')
+            
+            # Log source and translation together for review
+            logger.info(f"[{message_id}] BATCH {batch_index+1} TRANSLATION:\n"
+                       f"SOURCE: {source}\n"
+                       f"TRANSLATION: {translated_text}\n"
+                       f"---")
+            
             # If we got here, the translation was successful
             success = True
             
@@ -343,7 +339,7 @@ def translate_batch(
                 # Wait for 1 minute before retrying
                 wait_time = 60  # seconds
                 
-                with progress_lock:
+                async with progress_lock:
                     if update_status_func:
                         update_status_func(
                             message_id=message_id, 
@@ -352,12 +348,12 @@ def translate_batch(
                             message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
                         )
                 
-                time.sleep(wait_time)
+                await asyncio.sleep(wait_time)
             else:
                 # After 3 failed attempts, update status to failed and use placeholder text
                 error_message = f"Failed to translate batch {batch_index+1} after {max_retries} attempts: {error_msg}"
                 
-                with progress_lock:
+                async with progress_lock:
                     if update_status_func:
                         update_status_func(
                             message_id=message_id, 
@@ -369,7 +365,7 @@ def translate_batch(
                 # After 3 failed attempts, use the source text as fallback
                 translated_text = "<failed>"+batch+"</failed>"
                 
-                with progress_lock:
+                async with progress_lock:
                     if update_status_func:
                         update_status_func(
                             message_id=message_id, 
@@ -381,7 +377,7 @@ def translate_batch(
     # Return the batch index along with the translated text to maintain order
     return (batch_index, translated_text)
 
-def translate_segments(
+async def translate_segments(
     segments: List[str],
     translate_func: Callable,
     message_id: str,
@@ -412,7 +408,6 @@ def translate_segments(
         Dict[str, Any]: Translation result with status and translated text
     """
     if not segments:
-        logger.warning(f"No segments to translate for message_id: {message_id}")
         return {
             "status": "completed",
             "message_id": message_id,
@@ -430,50 +425,52 @@ def translate_segments(
     # Log batch information
     
     total_batches = len(batched_segments)
-    
     # Use a dictionary to store results in order
     translated_batches = {}
     
-    # Use ThreadPoolExecutor to process batches concurrently
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all translation tasks
-        future_to_batch = {}
+    # Create tasks for concurrent execution
+    tasks = []
+    for i, batch in enumerate(batched_segments):
+        task = translate_batch(
+            i,  # batch_index
+            batch,
+            translate_func,
+            message_id,
+            model_name,
+            api_key,
+            source_lang,
+            target_lang,
+            update_status_func,
+            total_batches
+        )
+        tasks.append(task)
+    
+    # Execute all tasks concurrently using asyncio.gather
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Submit all tasks to the thread pool
-        for i, batch in enumerate(batched_segments):
-            logger.info(f"[{message_id}] Submitting batch {i+1}/{total_batches} for translation, length: {len(batch)} chars")
-            
-            future = executor.submit(
-                translate_batch,
-                i,  # batch_index
-                batch,
-                translate_func,
-                message_id,
-                model_name,
-                api_key,
-                source_lang,
-                target_lang,
-                update_status_func,
-                total_batches
-            )
-            future_to_batch[future] = i
-            
-            # No delay needed
-        
-        # Process results as they complete (but we'll store them in order)
+        # Process results
         completed = 0
-        
-        for future in as_completed(future_to_batch):
+        for i, result in enumerate(results):
             try:
-                batch_index, translated_text = future.result()
-                batch_length = len(batched_segments[batch_index])
-                translated_length = len(translated_text)
-                
-                logger.info(f"[{message_id}] Completed batch {batch_index+1}/{total_batches}, " +
-                           f"input: {batch_length} chars, output: {translated_length} chars, " +
-                           f"ratio: {translated_length/batch_length:.2f}")
-                
-                translated_batches[batch_index] = translated_text
+                if isinstance(result, Exception):
+                    error_message = f"Error processing batch {i+1}: {str(result)}"
+                    logger.error(f"[{message_id}] {error_message}")
+                    
+                    # Update status to failed for this batch
+                    if update_status_func:
+                        update_status_func(
+                            message_id=message_id,
+                            progress=max(1, int((completed / total_batches) * 100)),
+                            status_type="failed",
+                            message=f"Translation failed: {error_message}"
+                        )
+                    
+                    # Use fallback text for failed batch
+                    translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"
+                else:
+                    batch_index, translated_text = result
+                    translated_batches[batch_index] = translated_text
                 
                 # Update overall progress
                 completed += 1
@@ -482,9 +479,9 @@ def translate_segments(
                 if completed == total_batches:
                     overall_progress = 100
                 
-                # Log progress at certain intervals to avoid log spam
-                if completed == 1 or completed == total_batches or completed % 5 == 0:
-                    logger.info(f"Progress: {completed}/{total_batches} batches ({overall_progress}%)")
+                # Log progress only at completion
+                if completed == total_batches:
+                    logger.info(f"[{message_id}] All {total_batches} batches completed successfully")
                 
                 # Always update status after each batch is completed
                 if update_status_func:
@@ -495,21 +492,16 @@ def translate_segments(
                         f"Completed {completed}/{total_batches} batches ({overall_progress}%)"
                     )
             except Exception as e:
-                error_message = f"Error processing batch {future_to_batch[future]+1}: {str(e)}"
+                error_message = f"Error processing result for batch {i+1}: {str(e)}"
                 logger.error(f"[{message_id}] {error_message}")
-                logger.exception(e)
-                
-                # Update status to failed for this batch
-                if update_status_func:
-                    update_status_func(
-                        message_id=message_id,
-                        progress=max(1, int((completed / total_batches) * 100)),
-                        status_type="failed",
-                        message=f"Translation failed: {error_message}"
-                    )
-                
-                # Still need to count this batch as completed even if it failed
                 completed += 1
+    
+    except Exception as e:
+        logger.error(f"[{message_id}] Error in asyncio.gather: {str(e)}")
+        # Handle the case where the entire gather fails
+        for i in range(total_batches):
+            if i not in translated_batches:
+                translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"
     
     # Check if we have all batches
     missing_batches = [i for i in range(total_batches) if i not in translated_batches]
@@ -523,7 +515,7 @@ def translate_segments(
     ordered_translations = [translated_batches[i] for i in range(total_batches)]
     
     # Combine all translated batches
-    combined_translation = "\n\n".join(ordered_translations)
+    combined_translation = "\n".join(ordered_translations)
     
     return {
         "status": "completed",
