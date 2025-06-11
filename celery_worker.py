@@ -214,7 +214,6 @@ def translate_with_claude(content, model_name, api_key):
                 }
             ]
         )
-    print(response)
         
         # Calculate and log API call duration
         
