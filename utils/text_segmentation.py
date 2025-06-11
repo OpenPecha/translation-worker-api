@@ -12,6 +12,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Callable, Optional, Union, Tuple
 import os
+from const import SYSTEM_PROMPT
 
 # Configure logging
 logger = logging.getLogger("text-segmentation")
@@ -282,7 +283,7 @@ def translate_batch(
     # Thread-safe progress update
     progress_lock = threading.Lock()
     
-    while retry_count < max_retries and not success:
+    while retry_count <source max_retries and not success:
         try:
             # Update progress - calculate based on batch_index + 1 to avoid 0% progress
             progress = int(((batch_index + 1) / total_batches) * 100) if total_batches > 1 else 50
@@ -308,13 +309,9 @@ def translate_batch(
             # Debug log all parameters to identify any issues
             
             PROMPT = (
-                f"{batch}\n\n"
-                f"[1. Translate the above to {target_lang}. \n"
-                f"2. Output translation only. \n"
-                f"3. Preserve exact formatting and spacing and newlines from source text.  \n"
-                f"4. Do not add line breaks, paragraph breaks, or formatting not present in source. \n"
-                f"5. Do not add any other text to the output. \n"
-                f"6. Translation should be matching source format.]"
+                f"{SYSTEM_PROMPT}\n\n"
+                f"[Translate the <source> to {target_lang}. \n"
+                f"<source>{batch}</source>"
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
