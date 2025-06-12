@@ -140,12 +140,6 @@ def process_message(self, message_data):
         # Get the segmentation method to use
         use_segmentation = message_data.get('use_segmentation', 'botok')
         
-        # Handle legacy boolean values (stored as strings)
-        if isinstance(use_segmentation, str):
-            if use_segmentation.lower() == 'true':
-                use_segmentation = 'botok'
-            elif use_segmentation.lower() == 'false':
-                use_segmentation = 'newline'
         
         # Validate segmentation method
         valid_segmentation_methods = [None, 'botok', 'sentence', 'newline']
@@ -204,7 +198,7 @@ def process_message(self, message_data):
         segment_count = len(segments)
         
         # Log segmentation method used
-        if use_segmentation:
+        if use_segmentation=='botok': 
             logger.info(f"Used advanced text segmentation for message {message_id}. Created {segment_count} segments.")
         else:
             logger.info(f"Used simple newline-based segmentation for message {message_id}. Created {segment_count} segments.")

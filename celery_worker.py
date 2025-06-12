@@ -6,14 +6,10 @@ for the translation queue system. It handles processing translation jobs
 from the Redis queue.
 """
 import os
-import time
 import json
 import logging
-import random
-import requests
 import redis
-from celery import shared_task, current_task
-from celery_app import celery_app
+from celery import shared_task
 
 # Configure logging
 logging.basicConfig(
@@ -133,9 +129,6 @@ def translate_text(message_id, model_name, api_key, prompt=""):
         }
 
 
-
-
-
 def translate_with_openai(content, model_name, api_key):
     """
     Translate text using OpenAI's API
@@ -199,7 +192,6 @@ def translate_with_claude(content, model_name, api_key):
     # Configure Anthropic client with the provided API key
     client = Anthropic(api_key=api_key)
     
-    print("content" ,content)
         # Call the Claude API for translation using the modern SDK format
     response = client.messages.create(
             model=model_name,

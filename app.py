@@ -131,7 +131,6 @@ def start_celery_worker():
     # Start the worker in a separate thread
     thread = threading.Thread(target=run_worker, daemon=True)
     thread.start()
-    logger.info("Celery worker thread started")
     return thread
 
 # Function to start Flower dashboard in a separate process

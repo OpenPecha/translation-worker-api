@@ -38,13 +38,6 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: Op
     # Clean the text
     text = text.strip()
     
-    # Handle None case - no segmentation
-    if use_segmentation is None:
-        return [text]
-    
-    # Convert to lowercase string for comparison
-    if isinstance(use_segmentation, str):
-        use_segmentation = use_segmentation.lower()
     
     # Handle newline-based segmentation
     if use_segmentation == "newline":
@@ -53,7 +46,6 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: Op
         # If there are no newlines or very few segments, split by maximum length to avoid too large segments
         if len(segments) <= 1 or any(len(s) > 1500 for s in segments):
             segments = split_by_length(text, max_length=1000)
-            
         return segments
     
     # Handle Tibetan segmentation with botok
@@ -63,25 +55,6 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: Op
         except Exception as e:
             logger.warning(f"Error segmenting Tibetan text with botok: {str(e)}. Falling back to default segmentation.")
     
-    # Default sentence-based segmentation using regex
-    if use_segmentation == "sentence" or use_segmentation is None:
-        # This pattern matches sentence boundaries:
-        # - End with period, question mark, or exclamation followed by space or end of string
-        # - Handle abbreviations, quotes, and parentheses
-        segments = re.split(r'(?<=[.!?])\s+', text)
-        
-        # Filter out empty segments
-        segments = [s.strip() for s in segments if s.strip()]
-        
-        # If the text is very long but no sentence boundaries were found,
-        # fall back to splitting by newlines or a maximum length
-        if len(segments) <= 1 and len(text) > 1000:
-            # Try splitting by newlines first
-            segments = [s.strip() for s in text.split('\n') if s.strip()]
-            
-            # If still too long or still just one segment, split by maximum length
-            if len(segments) <= 1 or any(len(s) > 1000 for s in segments):
-                segments = split_by_length(text, max_length=800)
     else:
         # Fallback for any unrecognized segmentation method
         logger.warning(f"Unrecognized segmentation method: {use_segmentation}. Using sentence-based segmentation.")
@@ -215,7 +188,7 @@ def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT
         
         # If adding this segment would exceed the character limit, start a new batch
         if current_length + segment_length > MAX_BATCH_CHARS and current_batch:
-            batched_segments.append("\n\n".join(current_batch))
+            batched_segments.append("\n".join(current_batch))
             current_batch = []
             current_length = 0
         
@@ -226,13 +199,13 @@ def batch_segments(segments: List[str], batch_size: int = int(os.getenv("SEGMENT
         # If current batch has reached the maximum number of segments, start a new batch
         # This is a secondary constraint after the character limit
         if len(current_batch) >= batch_size:
-            batched_segments.append("\n\n".join(current_batch))
+            batched_segments.append("\n".join(current_batch))
             current_batch = []
             current_length = 0
     
     # Add the last batch if it's not empty
     if current_batch:
-        batched_segments.append("\n\n".join(current_batch))
+        batched_segments.append("\n".join(current_batch))
     
     return batched_segments
 
@@ -318,11 +291,6 @@ async def translate_batch(
             else:
                 translated_text = str(result).replace('</br>', '\n')
             
-            # Log source and translation together for review
-            logger.info(f"[{message_id}] BATCH {batch_index+1} TRANSLATION:\n"
-                       f"SOURCE: {source}\n"
-                       f"TRANSLATION: {translated_text}\n"
-                       f"---")
             
             # If we got here, the translation was successful
             success = True
