@@ -90,6 +90,9 @@ async def add_message(message: Message = Body(...)):
             status_type="pending",
             message="Queued for translation"
         )
+        # if content is length more than 30000 characters, then raise an error
+        if len(message.content) > 30000:
+            raise HTTPException(status_code=400, detail="Content is too long, please shorten it")
         
         # Store message data in Redis
         message_data = {
