@@ -55,6 +55,7 @@ def segment_text(text: str, language: Optional[str] = None, use_segmentation: Op
         except Exception as e:
             logger.warning(f"Error segmenting Tibetan text with botok: {str(e)}. Falling back to default segmentation.")
     
+    # Default sentence-based segmentation using regex
     else:
         # Fallback for any unrecognized segmentation method
         logger.warning(f"Unrecognized segmentation method: {use_segmentation}. Using sentence-based segmentation.")
@@ -273,7 +274,7 @@ async def translate_batch(
             source = batch.replace('\n', '</br>')
             PROMPT = (
                 f"{SYSTEM_PROMPT}\n\n"
-                f"[Translate the <source> to {target_lang}. ]\n"
+                f"[Translate the <source> to {target_lang} which is code for a language. ]\n"
                 f"<source>{source}</source>"
             )
             # The error was that we're missing the message_id parameter
@@ -284,7 +285,6 @@ async def translate_batch(
                 api_key=api_key,
                 prompt=PROMPT
             )
-            
             # Extract the translated text
             if isinstance(result, dict) and "translated_text" in result:
                 translated_text = result["translated_text"].replace('</br>', '\n')

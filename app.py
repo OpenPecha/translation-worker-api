@@ -69,6 +69,7 @@ async def root():
 from routes.messages import router as messages_router
 from routes.queue import router as queue_router
 from routes.translation import router as translation_router
+from routes.ai import router as ai_router
 
 # Define constants
 NOT_FOUND_RESPONSE = {404: {"description": "Not found"}}
@@ -92,6 +93,13 @@ app.include_router(
     translation_router,
     prefix="/translation",
     tags=["translation"],
+    responses=NOT_FOUND_RESPONSE,
+)
+
+app.include_router(
+    ai_router,
+    prefix="/ai",
+    tags=["ai"],
     responses=NOT_FOUND_RESPONSE,
 )
 
