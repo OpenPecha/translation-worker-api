@@ -273,10 +273,11 @@ async def translate_batch(
             # Debug log all parameters to identify any issues
             # get array of strings
             source = batch.split('\n')
+            length = len(source)
             PROMPT = (
                 f"{SYSTEM_PROMPT}\n"
-                f"[Translate the text to {target_lang} which is code for a language. ]\n"
-                f"{source}"
+                f"[Translate the text to {target_lang} which is code for a language. the translations should be in an array of strings with the same length as the source text. that is {length} translations]\n"
+                f"{source} "
             )
             # The error was that we're missing the message_id parameter
             # The translate_text function requires message_id as the first parameter
