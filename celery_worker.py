@@ -10,7 +10,7 @@ import json
 import logging
 import redis
 from celery import shared_task
-
+from utils.translator import translate_with_openai, translate_with_claude
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -127,106 +127,6 @@ def translate_text(message_id, model_name, api_key, prompt=""):
             "error": str(e),
             "model_used": model_name
         }
-
-
-def translate_with_openai(content, model_name, api_key):
-    """
-    Translate text using OpenAI's API
-    """
-    from openai import OpenAI
-    print("started translation via openai")
-    # Configure OpenAI client with the provided API key using the new v1.0.0+ style
-    client = OpenAI(api_key=api_key)
-    
-    try:
-        # Call the OpenAI API for translation using the new v1.0.0+ style
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "user", "content": content}
-            ],
-            temperature=0.3,  # Lower temperature for more accurate translations
-        )
-        
-        # Extract the translated text from the response using the new response format
-        translated_text = response.choices[0].message.content
-        print("translated: ",translated_text)
-        return translated_text
-        
-    except Exception as e:
-        logger.error(f"OpenAI translation error: {str(e)}")
-        raise
-
-
-def translate_with_claude(content, model_name, api_key):
-    """
-    Translate text using Anthropic's Claude AI (with input validation)
-    """
-    from anthropic import Anthropic
-    import logging
-    import time
-    
-    logger = logging.getLogger(__name__)
-    # Validate and convert content to string
-    if isinstance(content, dict):
-        logger.warning(f"Content is a dict: {content}")
-        # If it's a dict, try to extract text from common keys
-        if 'text' in content:
-            content = content['text']
-        elif 'content' in content:
-            content = content['content']
-        elif 'message' in content:
-            content = content['message']
-        else:
-            # Convert dict to string as fallback
-            content = str(content)
-    elif not isinstance(content, str):
-        # Convert other types to string
-        content = str(content)
-    
-    # Validate content is not empty
-    if not content or not content.strip():
-        logger.error("Content is empty or contains only whitespace")
-        raise ValueError("Content is empty or contains only whitespace")
-    
-    # Configure Anthropic client with the provided API key
-    client = Anthropic(api_key=api_key)
-    
-        # Call the Claude API for translation using the modern SDK format
-    response = client.messages.create(
-            model=model_name,
-            max_tokens=4000,
-            temperature=0.3,  # Lower temperature for more accurate translations
-            messages=[
-                {
-                    "role": "user",
-                    "content":content
-                }
-            ]
-        )
-        
-        # Calculate and log API call duration
-        
-        # Extract the translated text from the response
-    translated_text = response.content[0].text
-        
-        # Log translation result statistics
-     
-    return {"translated_text": translated_text}
-        
-    # except AttributeError as e:
-    #     # Specific handling for API client attribute errors (e.g., 'Anthropic' object has no attribute 'messages')
-    #     raise ValueError(f"API client configuration error: {str(e)}")
-        
-    # except ValueError as e:
-    #     # Handle value errors, including API key issues
-    #     raise
-        
-    # except Exception as e:
-    #     # General error handling
-    #     logger.error(f"Claude AI translation error: {str(e)}")
-    #     logger.error(f"Content type: {type(content)}, Content length: {len(content) if isinstance(content, str) else 'N/A'}")
-    #     raise
 
 
 
