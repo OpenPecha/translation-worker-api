@@ -23,4 +23,7 @@ Output: ["hello","how are you","good morning"]
 
 The input will be provided in array of strings. Translate the content preserving EXACT formatting. 
 """
-                
+               
+               
+MAX_CONTENT_LENGTH = 100000
+         

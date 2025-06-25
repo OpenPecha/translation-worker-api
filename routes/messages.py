@@ -12,7 +12,7 @@ import redis
 
 from models.message import Message, MessageResponse, MessageStatus, StatusUpdate, TranslationStatus
 from celery_app import process_message, get_queue_for_priority, update_status
-
+from const import MAX_CONTENT_LENGTH
 # Configure logging
 logger = logging.getLogger("message-routes")
 
@@ -91,7 +91,7 @@ async def add_message(message: Message = Body(...)):
             message="Queued for translation"
         )
         # if content is length more than 30000 characters, then raise an error
-        if len(message.content) > 30000:
+        if len(message.content) > MAX_CONTENT_LENGTH:
             raise HTTPException(status_code=400, detail="Content is too long, please shorten it")
         
         # Store message data in Redis

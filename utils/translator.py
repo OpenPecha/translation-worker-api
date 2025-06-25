@@ -25,7 +25,7 @@ def translate_with_openai(content, model_name, api_key):
         return translated_text
         
     except Exception as e:
-        logger.error(f"OpenAI translation error: {str(e)}")
+        print(e)
         raise
 
 
