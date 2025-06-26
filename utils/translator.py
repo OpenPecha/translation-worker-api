@@ -72,6 +72,7 @@ def translate_with_gemini(content, model_name, api_key):
     
     try:
         translated_text = translate_text(content)
+        print("translated_text: ",translated_text.translation)
         return {"translated_text": "\n".join(translated_text.translation)}
     except Exception as e:
         print(e)
