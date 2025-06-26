@@ -51,19 +51,32 @@ def translate_with_claude(content, model_name, api_key):
     except Exception as e:
         print(e)
         raise
+
+
+def translate_with_gemini(content, model_name, api_key):
+    """
+    Translate text using Google's Gemini AI (with input validation)
+    """
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    from typing import List
+    from pydantic import BaseModel, Field
+    
+    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0, google_api_key=api_key)
+    
+    class Translation(BaseModel):
+        translation: List[str] = Field(description="List of translations of the sourcetext")
+
+    def translate_text(data):
+        output = llm.with_structured_output(Translation).invoke(data)
+        return output
+    
+    try:
+        translated_text = translate_text(content)
+        return {"translated_text": "\n".join(translated_text.translation)}
+    except Exception as e:
+        print(e)
+        raise
     
      
         
-    # except AttributeError as e:
-    #     # Specific handling for API client attribute errors (e.g., 'Anthropic' object has no attribute 'messages')
-    #     raise ValueError(f"API client configuration error: {str(e)}")
-        
-    # except ValueError as e:
-    #     # Handle value errors, including API key issues
-    #     raise
-        
-    # except Exception as e:
-    #     # General error handling
-    #     logger.error(f"Claude AI translation error: {str(e)}")
-    #     logger.error(f"Content type: {type(content)}, Content length: {len(content) if isinstance(content, str) else 'N/A'}")
-    #     raise
+   

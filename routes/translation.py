@@ -94,7 +94,7 @@ async def test_translator(request: TranslationTestRequest):
     """
     try:
         # Import the translator functions
-        from utils.translator import translate_with_openai, translate_with_claude
+        from utils.translator import translate_with_openai, translate_with_claude, translate_with_gemini
         
         if request.translator_type.lower() == "openai":
             # Test OpenAI translator
@@ -125,7 +125,20 @@ async def test_translator(request: TranslationTestRequest):
                 translator_used="claude",
                 model_used=request.model_name
             )
+        elif request.translator_type.lower() == "gemini":
+            # Test Gemini translator
+            result = translate_with_gemini(
+                content=request.text,
+                model_name=request.model_name,
+                api_key=request.api_key
+            )
             
+            return TranslationTestResponse(
+                success=True,
+                translated_text=result.get("translated_text"),
+                translator_used="gemini",
+                model_used=request.model_name
+            )
         else:
             raise HTTPException(
                 status_code=400, 

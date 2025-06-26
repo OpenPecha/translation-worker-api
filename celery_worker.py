@@ -10,7 +10,7 @@ import json
 import logging
 import redis
 from celery import shared_task
-from utils.translator import translate_with_openai, translate_with_claude
+from utils.translator import translate_with_openai, translate_with_claude,translate_with_gemini
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -93,6 +93,11 @@ def translate_text(message_id, model_name, api_key, prompt=""):
             translation = translate_with_claude(content =prompt, model_name=model_name, api_key=api_key)
             # Update progress after successful API call
             update_translation_status(message_id, 50, "started", "Claude AI translation in progress")
+        elif model_name.startswith("gemini"):
+            # Use Gemini
+            translation = translate_with_gemini(content=prompt, model_name=model_name, api_key=api_key)
+            # Update progress after successful API call
+            update_translation_status(message_id, 50, "started", "Gemini AI translation in progress")
         else:
             raise ValueError(f"Unsupported model: {model_name}. Please use a model name starting with 'gpt' or 'claude'.")
         
