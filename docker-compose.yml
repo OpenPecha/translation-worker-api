@@ -40,7 +40,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     networks:
       - translation-network
-    command: python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+    command: python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload --limit-concurrency 100 --limit-max-request-size 104857600
 
   # Celery worker
   worker:
