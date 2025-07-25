@@ -104,13 +104,13 @@ async def add_message(message: Message = Body(...)):
     """
     try:
         # Validate content length
-        if len(message.content) > MAX_CONTENT_LENGTH:
-            logger.warning(f"Content too long: {len(message.content)} characters")
-            return ErrorResponse(
-                error=f"Content is too long. Maximum allowed: {MAX_CONTENT_LENGTH} characters, received: {len(message.content)} characters",
-                error_code="CONTENT_TOO_LONG",
-                details={"max_length": MAX_CONTENT_LENGTH, "actual_length": len(message.content)}
-            )
+        # if len(message.content) > MAX_CONTENT_LENGTH:
+        #     logger.warning(f"Content too long: {len(message.content)} characters")
+        #     return ErrorResponse(
+        #         error=f"Content is too long. Maximum allowed: {MAX_CONTENT_LENGTH} characters, received: {len(message.content)} characters",
+        #         error_code="CONTENT_TOO_LONG",
+        #         details={"max_length": MAX_CONTENT_LENGTH, "actual_length": len(message.content)}
+        #     )
         
         # Validate content is not empty
         if not message.content.strip():
