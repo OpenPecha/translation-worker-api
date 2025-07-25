@@ -19,8 +19,68 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 300s
+          command_timeout: 60s
           script: |
-            cd /home/ubuntu/translation-worker-api
+            echo "🚀 Starting deployment..."
+
+            # Navigate to project directory
+            cd /home/ubuntu/translation-worker-api || {
+              echo "❌ Project directory not found!"
+              exit 1
+            }
+
+            # Show current status
+            echo "📊 Current git status:"
+            git status
+            git log --oneline -3
+
+            # Force clean any local changes and pull latest
+            echo "🔄 Cleaning and pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main
             git pull origin main
-            sudo docker-compose down
-            sudo docker-compose up -d --build
+
+            # Show what changed
+            echo "📝 Latest changes:"
+            git log --oneline -3
+
+            # Stop services gracefully
+            echo "🛑 Stopping services..."
+            sudo docker-compose down --remove-orphans
+
+            # Clean up Docker resources for fresh build
+            echo "🧹 Cleaning Docker resources..."
+            sudo docker system prune -f
+            sudo docker volume prune -f
+
+            # Rebuild and start services
+            echo "🔨 Building and starting services..."
+            sudo docker-compose up -d --build --force-recreate
+
+            # Wait for services to be ready
+            echo "⏳ Waiting for services to start..."
+            sleep 30
+
+            # Verify deployment
+            echo "✅ Verifying deployment..."
+            sudo docker-compose ps
+
+            # Check if API is responding
+            echo "🔍 Testing API health..."
+            for i in {1..10}; do
+              if curl -f http://localhost:8000/health 2>/dev/null; then
+                echo "✅ API is healthy!"
+                break
+              else
+                echo "⏳ Attempt $i: API not ready yet, waiting..."
+                sleep 5
+              fi
+            done
+
+            # Show final status
+            echo "📋 Final status:"
+            sudo docker-compose logs api --tail=10
+            sudo docker-compose logs worker --tail=10
+
+            echo "🎉 Deployment completed!"
