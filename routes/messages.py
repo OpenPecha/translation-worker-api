@@ -564,6 +564,198 @@ async def health_check():
             details=health_status
         )
 
+@router.get("/{message_id}/partial", 
+           response_model=dict,
+           responses={
+               404: {"model": ErrorResponse, "description": "Message not found"},
+               500: {"model": ErrorResponse, "description": "Internal Server Error"}
+           })
+async def get_partial_translation_results(message_id: str):
+    """
+    Get partial translation results as they become available.
+    
+    This endpoint returns incremental translation results as each batch completes,
+    allowing users to see progress in real-time rather than waiting for completion.
+    
+    ## Path Parameters
+    - **message_id**: Unique identifier of the message
+    
+    ## Response
+    Returns partial translation results with completion status.
+    
+    ## Example Response (In Progress)
+    ```json
+    {
+      "success": true,
+      "message_id": "abc-123",
+      "partial_results": {
+        "0": "First batch translated text...",
+        "1": "Second batch translated text...",
+        "2": "Third batch translated text..."
+      },
+      "completed_batches": 3,
+      "total_batches": 10,
+      "completion_percentage": 30,
+      "status": "in_progress",
+      "last_updated": 1705312200.0
+    }
+    ```
+    
+    ## Example Response (No Partial Results Yet)
+    ```json
+    {
+      "success": true,
+      "message_id": "abc-123", 
+      "partial_results": {},
+      "completed_batches": 0,
+      "total_batches": 0,
+      "completion_percentage": 0,
+      "status": "pending",
+      "message": "No partial results available yet"
+    }
+    ```
+    """
+    try:
+        # Check if message exists
+        message_data = redis_client.hgetall(f"message:{message_id}")
+        if not message_data:
+            logger.warning(f"Message not found for partial results: {message_id}")
+            return ErrorResponse(
+                error="Message not found",
+                error_code="MESSAGE_NOT_FOUND",
+                details={"message_id": message_id}
+            )
+        
+        # Get partial results
+        partial_data = redis_client.hgetall(f"translation_partial:{message_id}")
+        
+        if partial_data and "partial_results" in partial_data:
+            # Parse partial results
+            partial_results = json.loads(partial_data.get("partial_results", "{}"))
+            completed_batches = int(partial_data.get("completed_batches", 0))
+            total_batches = int(partial_data.get("total_batches", 0))
+            completion_percentage = int(partial_data.get("completion_percentage", 0))
+            last_updated = float(partial_data.get("last_updated", time.time()))
+            
+            return {
+                "success": True,
+                "message_id": message_id,
+                "partial_results": partial_results,
+                "completed_batches": completed_batches,
+                "total_batches": total_batches,
+                "completion_percentage": completion_percentage,
+                "status": "completed" if completion_percentage >= 100 else "in_progress",
+                "last_updated": last_updated
+            }
+        else:
+            # No partial results yet
+            return {
+                "success": True,
+                "message_id": message_id,
+                "partial_results": {},
+                "completed_batches": 0,
+                "total_batches": 0,
+                "completion_percentage": 0,
+                "status": "pending",
+                "message": "No partial results available yet"
+            }
+        
+    except Exception as e:
+        error_msg = f"Failed to get partial results: {str(e)}"
+        logger.error(error_msg)
+        return ErrorResponse(
+            error=error_msg,
+            error_code="PARTIAL_RESULTS_ERROR",
+            details={"message_id": message_id, "exception_type": type(e).__name__}
+        )
+
+@router.post("/debug/translate", 
+           response_model=dict,
+           responses={
+               500: {"model": ErrorResponse, "description": "Translation debug failed"}
+           })
+async def debug_translate(request: dict = Body(...)):
+    """
+    Debug endpoint to test translation functions directly.
+    
+    This endpoint allows testing individual translation components to diagnose issues.
+    
+    ## Request Body
+    ```json
+    {
+      "text": "Hello world",
+      "model_name": "claude-3-haiku-20240307", 
+      "api_key": "your-api-key",
+      "test_type": "direct"
+    }
+    ```
+    
+    ## Response
+    Returns detailed debug information about the translation attempt.
+    """
+    try:
+        from celery_worker import translate_text
+        from utils.translator import translate_with_openai, translate_with_claude, translate_with_gemini
+        
+        text = request.get("text", "Hello world")
+        model_name = request.get("model_name", "")
+        api_key = request.get("api_key", "")
+        test_type = request.get("test_type", "direct")
+        
+        debug_info = {
+            "input": {
+                "text": text,
+                "model_name": model_name, 
+                "api_key_present": bool(api_key),
+                "api_key_length": len(api_key) if api_key else 0,
+                "test_type": test_type
+            },
+            "results": {}
+        }
+        
+        if test_type == "direct":
+            # Test the direct translator functions
+            try:
+                if model_name.startswith("claude"):
+                    result = translate_with_claude(content=text, model_name=model_name, api_key=api_key)
+                    debug_info["results"]["direct_claude"] = {"success": True, "result": result}
+                elif model_name.startswith("gpt"):
+                    result = translate_with_openai(content=text, model_name=model_name, api_key=api_key)
+                    debug_info["results"]["direct_openai"] = {"success": True, "result": result}
+                elif model_name.startswith("gemini"):
+                    result = translate_with_gemini(content=text, model_name=model_name, api_key=api_key)
+                    debug_info["results"]["direct_gemini"] = {"success": True, "result": result}
+                else:
+                    debug_info["results"]["direct"] = {"success": False, "error": "Unsupported model"}
+                    
+            except Exception as e:
+                debug_info["results"]["direct"] = {"success": False, "error": str(e), "type": type(e).__name__}
+        
+        # Test the celery worker function
+        try:
+            result = translate_text(
+                message_id="debug-test",
+                model_name=model_name,
+                api_key=api_key,
+                prompt=text
+            )
+            debug_info["results"]["celery_worker"] = {"success": True, "result": result}
+        except Exception as e:
+            debug_info["results"]["celery_worker"] = {"success": False, "error": str(e), "type": type(e).__name__}
+        
+        return {
+            "success": True,
+            "debug_info": debug_info
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug translate failed: {e}")
+        return ErrorResponse(
+            error=f"Debug translation failed: {str(e)}",
+            error_code="DEBUG_ERROR",
+            details={"exception_type": type(e).__name__}
+        )
+
 @router.get("/redis/info", 
            response_model=dict,
            responses={

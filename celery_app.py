@@ -467,6 +467,72 @@ async def update_status_direct_async(message_id, progress, status_type, message=
         logger.error(f"❌ Failed to update status async for message {message_id}: {str(e)}")
         return False
 
+async def update_partial_result_async(message_id, batch_index, batch_result, total_batches):
+    """
+    Update partial translation results in Redis as each batch completes
+    
+    This allows users to see incremental translation results as they're completed,
+    rather than waiting for the entire translation to finish.
+    
+    Args:
+        message_id (str): Unique identifier for the translation job
+        batch_index (int): Index of the completed batch
+        batch_result (str): Translated text for this batch
+        total_batches (int): Total number of batches
+    
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    import json
+    import asyncio
+    
+    def _sync_update():
+        """Synchronous update function to run in thread"""
+        try:
+            redis_client = get_redis_client()
+            
+            # Get existing partial results or create new
+            existing_data = redis_client.hgetall(f"translation_partial:{message_id}")
+            
+            if existing_data and "partial_results" in existing_data:
+                partial_results = json.loads(existing_data["partial_results"])
+            else:
+                partial_results = {}
+            
+            # Add this batch result
+            partial_results[str(batch_index)] = batch_result
+            
+            # Calculate completion percentage
+            completion_percentage = int((len(partial_results) / total_batches) * 100)
+            
+            # Update partial results in Redis
+            partial_data = {
+                "partial_results": json.dumps(partial_results),
+                "completed_batches": len(partial_results),
+                "total_batches": total_batches,
+                "completion_percentage": completion_percentage,
+                "last_updated": time.time()
+            }
+            
+            redis_client.hset(f"translation_partial:{message_id}", mapping=partial_data)
+            redis_client.expire(f"translation_partial:{message_id}", REDIS_EXPIRY_SECONDS)
+            
+            logger.info(f"✅ Updated partial result for {message_id}: batch {batch_index+1}/{total_batches} ({completion_percentage}% complete)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update partial result for {message_id}: {str(e)}")
+            return False
+    
+    try:
+        # Run the synchronous Redis update in a thread to avoid blocking
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _sync_update)
+        return result
+    except Exception as e:
+        logger.error(f"❌ Failed to update partial result async for {message_id}: {str(e)}")
+        return False
+
 @celery_app.task(name="update_status")
 def update_status(message_id, progress, status_type, message=None, webhook_url=None, translated_text=None, model_name=None, metadata=None):
     """

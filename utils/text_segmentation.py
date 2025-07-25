@@ -255,7 +255,6 @@ async def translate_batch(
                 # Only update status on retries to inform about issues
                 if update_status_func:
                     # Check if the update function is async
-                    import asyncio
                     if asyncio.iscoroutinefunction(update_status_func):
                         await update_status_func(
                             message_id=message_id, 
@@ -290,15 +289,67 @@ async def translate_batch(
                 prompt=PROMPT
             )
             # Extract the translated text
-            if isinstance(result, dict) and "translated_text" in result:
-                translated_text = result["translated_text"].replace('</br>', '\n')
+            if isinstance(result, dict):
+                if result.get("status") == "completed" and "translated_text" in result:
+                    # Successful translation
+                    translated_text = result["translated_text"].replace('</br>', '\n')
+                    success = True
+                elif result.get("status") == "failed":
+                    # Translation failed at AI service level
+                    error_msg = result.get("error", "Unknown translation error")
+                    logger.error(f"[{message_id}] AI translation failed for batch {batch_index+1}: {error_msg}")
+                    raise Exception(f"AI translation failed: {error_msg}")
+                elif "translated_text" in result:
+                    # Legacy format (just translated_text)
+                    translated_text = result["translated_text"].replace('</br>', '\n')
+                    success = True
+                else:
+                    # Unexpected result format
+                    logger.error(f"[{message_id}] Unexpected result format from translate_func: {result}")
+                    raise Exception(f"Unexpected translation result format: {result}")
             else:
+                # String result (legacy format)
                 translated_text = str(result).replace('</br>', '\n')
+                success = True
             
+            # Log successful translation
+            if success:
+                logger.info(f"[{message_id}] Successfully translated batch {batch_index+1}/{total_batches}")
+                
+                # Update progress immediately after successful batch
+                if update_status_func:
+                    batch_progress = max(10, min(95, int(((batch_index + 1) / total_batches) * 85) + 10))  # 10-95% range
+                    progress_message = f"Completed batch {batch_index+1}/{total_batches} ({batch_progress}%)"
+                    
+                    # Check if the update function is async
+                    if asyncio.iscoroutinefunction(update_status_func):
+                        await update_status_func(
+                            message_id=message_id,
+                            progress=batch_progress,
+                            status_type="started",
+                            message=progress_message
+                        )
+                    else:
+                        update_status_func(
+                            message_id=message_id,
+                            progress=batch_progress,
+                            status_type="started",
+                            message=progress_message
+                        )
+                
+                # Update partial results in Redis
+                try:
+                    from celery_app import update_partial_result_async
+                    await update_partial_result_async(
+                        message_id=message_id,
+                        batch_index=batch_index,
+                        batch_result=translated_text,
+                        total_batches=total_batches
+                    )
+                except Exception as e:
+                    logger.warning(f"[{message_id}] Failed to update partial result for batch {batch_index+1}: {e}")
             
             # If we got here, the translation was successful
-            success = True
-            
             # We no longer update status here to avoid redundant updates
             # The translate_segments function will handle all status updates
             
@@ -313,7 +364,6 @@ async def translate_batch(
                 
                 if update_status_func:
                     # Check if the update function is async
-                    import asyncio
                     if asyncio.iscoroutinefunction(update_status_func):
                         await update_status_func(
                             message_id=message_id, 
@@ -336,7 +386,6 @@ async def translate_batch(
                 
                 if update_status_func:
                     # Check if the update function is async
-                    import asyncio
                     if asyncio.iscoroutinefunction(update_status_func):
                         await update_status_func(
                             message_id=message_id, 
@@ -357,7 +406,6 @@ async def translate_batch(
                 
                 if update_status_func:
                     # Check if the update function is async
-                    import asyncio
                     if asyncio.iscoroutinefunction(update_status_func):
                         await update_status_func(
                             message_id=message_id, 
@@ -459,7 +507,6 @@ async def translate_segments(
                     # Update status to failed for this batch
                     if update_status_func:
                         # Check if the update function is async
-                        import asyncio
                         if asyncio.iscoroutinefunction(update_status_func):
                             await update_status_func(
                                 message_id=message_id,
@@ -490,36 +537,48 @@ async def translate_segments(
                 if completed % max(1, total_batches // 4) == 0 or completed == total_batches:
                     logger.info(f"[{message_id}] Completed {completed}/{total_batches} batches ({overall_progress}%)")
                 
-                # Update status after each batch completion
-                if update_status_func:
-                    status_message = f"Completed {completed}/{total_batches} batches"
-                    if completed == total_batches:
+                # Only update status at major milestones to avoid spam (individual batches update themselves)
+                if completed == total_batches:
+                    # Final update when all batches are complete
+                    if update_status_func:
                         status_message = "All batches completed, finalizing translation"
-                    
-                    # Check if the update function is async
-                    import asyncio
-                    if asyncio.iscoroutinefunction(update_status_func):
-                        await update_status_func(
-                            message_id,
-                            overall_progress,
-                            "started",
-                            status_message
-                        )
-                    else:
-                        update_status_func(
-                            message_id,
-                            overall_progress,
-                            "started",
-                            status_message
-                        )
+                        
+                        # Check if the update function is async
+                        if asyncio.iscoroutinefunction(update_status_func):
+                            await update_status_func(
+                                message_id,
+                                95,  # 95% - final assembly pending
+                                "started",
+                                status_message
+                            )
+                        else:
+                            update_status_func(
+                                message_id,
+                                95,  # 95% - final assembly pending
+                                "started",
+                                status_message
+                            )
             except Exception as e:
                 error_message = f"Error processing result for batch {i+1}: {str(e)}"
                 logger.error(f"[{message_id}] {error_message}")
                 completed += 1
     
     except Exception as e:
-        logger.error(f"[{message_id}] Error in asyncio.gather: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"[{message_id}] Critical error in asyncio.gather: {error_msg}")
+        logger.error(f"[{message_id}] Exception type: {type(e).__name__}")
+        
+        # Add stack trace for debugging
+        import traceback
+        logger.error(f"[{message_id}] Stack trace: {traceback.format_exc()}")
+        
+        # If this is an asyncio-related error, we should not continue
+        if "asyncio" in error_msg.lower() or "coroutine" in error_msg.lower():
+            logger.error(f"[{message_id}] Asyncio error detected - this indicates a code issue, not a translation issue")
+            raise Exception(f"Asyncio execution error: {error_msg}")
+        
         # Handle the case where the entire gather fails
+        logger.warning(f"[{message_id}] Creating fallback entries for all {total_batches} batches due to gather failure")
         for i in range(total_batches):
             if i not in translated_batches:
                 translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"

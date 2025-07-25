@@ -77,6 +77,14 @@ def translate_text(message_id, model_name, api_key, prompt=""):
     except Exception as e:
         error_message = f"Translation error with {model_name}: {str(e)}"
         logger.error(error_message)
+        logger.error(f"Exception type: {type(e).__name__}")
+        logger.error(f"Model name: {model_name}")
+        logger.error(f"API key present: {'Yes' if api_key else 'No'}")
+        logger.error(f"Prompt length: {len(prompt) if prompt else 0}")
+        
+        # Add stack trace for debugging
+        import traceback
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         
         # Return a failed status instead of re-raising the exception
         # This ensures the error is properly handled and marked as failed
@@ -84,7 +92,8 @@ def translate_text(message_id, model_name, api_key, prompt=""):
             "status": "failed",
             "message_id": message_id,
             "error": str(e),
-            "model_used": model_name
+            "model_used": model_name,
+            "error_type": type(e).__name__
         }
 
 
