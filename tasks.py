@@ -47,29 +47,6 @@ redis_client = redis.Redis(
     decode_responses=True
 )
 
-@shared_task(name="tasks.update_translation_status")
-def update_translation_status(message_id, progress, status_type, message=None):
-    """
-    Update the status of a translation job in the queue
-    """
-    try:
-        status_data = {
-            "progress": progress,
-            "status_type": status_type,
-            "message": message
-        }
-        
-        response = requests.post(
-            f"{API_BASE_URL}/messages/{message_id}/status",
-            json=status_data
-        )
-        response.raise_for_status()
-        logger.info(f"Updated status for message {message_id}: {status_type} ({progress}%)")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to update status for message {message_id}: {str(e)}")
-        return False
-
 @shared_task(name="tasks.process_translation")
 def process_translation(message_id, content, model_name, api_key, metadata=None):
     """
@@ -82,7 +59,7 @@ def process_translation(message_id, content, model_name, api_key, metadata=None)
             raise ValueError("Missing API key for translation service")
         
         # Mark as started
-        update_translation_status(message_id, 0, "started", "Translation in progress")
+        # update_translation_status(message_id, 0, "started", "Translation in progress") # This line is removed
         
         # Calculate steps based on content length
         content_length = len(content)
@@ -109,22 +86,18 @@ def process_translation(message_id, content, model_name, api_key, metadata=None)
                 progress_msg = f"Translation {progress:.1f}% complete"
                 
             # Update status
-            update_translation_status(message_id, progress, "started", progress_msg)
+            # update_translation_status(message_id, progress, "started", progress_msg) # This line is removed
         
         # In a real implementation, you would call the actual translation API here
         # For now, we'll just simulate successful completion
-        update_translation_status(message_id, 100, "completed", "Translation completed successfully")
+        # update_translation_status(message_id, 100, "completed", "Translation completed successfully") # This line is removed
         
         logger.info(f"Successfully processed translation job: {message_id}")
         return {"status": "completed", "message_id": message_id}
     
     except Exception as e:
         logger.error(f"Error processing translation: {str(e)}")
-        # Update status to failed
-        try:
-            update_translation_status(message_id, 0, "failed", f"Translation failed: {str(e)}")
-        except Exception as update_error:
-            logger.error(f"Failed to update error status: {str(update_error)}")
+        # Status updates are now handled by the main celery_app process_message task
         return {"status": "failed", "message_id": message_id, "error": str(e)}
 
 @shared_task(name="tasks.check_empty_queue")

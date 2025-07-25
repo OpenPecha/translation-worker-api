@@ -25,55 +25,15 @@ logger = logging.getLogger("celery-worker")
 # API configuration
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-@shared_task(name="celery_worker.update_translation_status")
-def update_translation_status(message_id, progress, status_type, message=None):
-    """
-    Update the status of a translation job directly in Redis
-    
-    Args:
-        message_id (str): Unique identifier for the translation job
-        progress (float): Progress percentage (0-100)
-        status_type (str): Status type (pending, started, completed, failed)
-        message (str, optional): Status message or error details
-    """
-    try:
-        # Create status data
-        status_data = {
-            "progress": progress,
-            "status_type": status_type,
-            "message": message
-        }
-        
-        # Connect to Redis
-        redis_client = redis.Redis(
-            host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", 6379)),
-            db=int(os.getenv("REDIS_DB", 0)),
-            password=os.getenv("REDIS_PASSWORD", None),
-            decode_responses=True
-        )
-        
-        # Update status directly in Redis
-        redis_client.hset(
-            f"message:{message_id}",
-            "status",
-            json.dumps(status_data)
-        )
-        
-        return True
-    except Exception as e:
-        logger.error(f"Failed to update status for message {message_id}: {str(e)}")
-        return False
-
 @shared_task(name="celery_worker.translate_text")
 def translate_text(message_id, model_name, api_key, prompt=""):
     """
-    Translate text using either OpenAI or Claude AI based on the model name
+    Translate text using either OpenAI, Claude, or Gemini AI based on the model name
     
     Args:
         message_id (str): Unique identifier for the translation job
         content (str): Text content to translate
-        model_name (str): Model to use for translation (e.g., 'gpt-4', 'claude-3-opus')
+        model_name (str): Model to use for translation (e.g., 'gpt-4', 'claude-3-opus', 'gemini-pro')
         api_key (str): API key for the selected service
         source_lang (str, optional): Source language code (e.g., 'en')
         target_lang (str, optional): Target language code (e.g., 'fr')
@@ -86,20 +46,17 @@ def translate_text(message_id, model_name, api_key, prompt=""):
         if model_name.startswith("gpt") or model_name.startswith("text-davinci"):
             # Use OpenAI
             translation = translate_with_openai(content=prompt, model_name=model_name, api_key=api_key)
-            # Update progress after successful API call
-            update_translation_status(message_id, 50, "started", "OpenAI translation in progress")
+            # Translation completed - no need to update progress here as it's handled by the caller
         elif model_name.startswith("claude"):
             # Use Claude prompt
             translation = translate_with_claude(content =prompt, model_name=model_name, api_key=api_key)
-            # Update progress after successful API call
-            update_translation_status(message_id, 50, "started", "Claude AI translation in progress")
+            # Translation completed - no need to update progress here as it's handled by the caller
         elif model_name.startswith("gemini"):
             # Use Gemini
             translation = translate_with_gemini(content=prompt, model_name=model_name, api_key=api_key)
-            # Update progress after successful API call
-            update_translation_status(message_id, 50, "started", "Gemini AI translation in progress")
+            # Translation completed - no need to update progress here as it's handled by the caller
         else:
-            raise ValueError(f"Unsupported model: {model_name}. Please use a model name starting with 'gpt' or 'claude'.")
+            raise ValueError(f"Unsupported model: {model_name}. Please use a model name starting with 'gpt', 'claude', or 'gemini'.")
         
         
         # Handle different return types from translation functions
@@ -120,9 +77,6 @@ def translate_text(message_id, model_name, api_key, prompt=""):
     except Exception as e:
         error_message = f"Translation error with {model_name}: {str(e)}"
         logger.error(error_message)
-        
-        # Update status as failed
-        update_translation_status(message_id, 0, "failed", f"Translation failed: {str(e)}")
         
         # Return a failed status instead of re-raising the exception
         # This ensures the error is properly handled and marked as failed

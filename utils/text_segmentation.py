@@ -246,28 +246,20 @@ async def translate_batch(
     success = False
     translated_text = ""
     
-    # Async lock for progress updates
-    progress_lock = asyncio.Lock()
-    
     while retry_count <= max_retries and not success:
         try:
-            # Update progress - calculate based on batch_index + 1 to avoid 0% progress
-            progress = int(((batch_index + 1) / total_batches) * 100) if total_batches > 1 else 50
-            retry_msg = f" (Retry {retry_count+1}/{max_retries})" if retry_count > 0 else ""
-            
-            async with progress_lock:
+            # Only log retries and failures to avoid spamming status updates
+            if retry_count > 0:
+                logger.info(f"[{message_id}] Retry {retry_count+1}/{max_retries} for batch {batch_index+1}/{total_batches}")
+                
+                # Only update status on retries to inform about issues
                 if update_status_func:
                     update_status_func(
                         message_id=message_id, 
-                        progress=progress, 
+                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
                         status_type="started", 
-                        message=f"Translating batch {batch_index+1}/{total_batches} ({progress}%){retry_msg}"
+                        message=f"Retrying batch {batch_index+1}/{total_batches} (attempt {retry_count+1})"
                     )
-            
-            # Only log retries
-            if retry_count > 0:
-                logger.info(f"[{message_id}] Retry {retry_count+1}/{max_retries} for batch {batch_index+1}/{total_batches}")
-            
             
             # Call the translation function
             # Debug log all parameters to identify any issues
@@ -309,40 +301,37 @@ async def translate_batch(
                 # Wait for 1 minute before retrying
                 wait_time = 60  # seconds
                 
-                async with progress_lock:
-                    if update_status_func:
-                        update_status_func(
-                            message_id=message_id, 
-                            progress=progress, 
-                            status_type="started", 
-                            message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
-                        )
+                if update_status_func:
+                    update_status_func(
+                        message_id=message_id, 
+                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                        status_type="started", 
+                        message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
+                    )
                 
                 await asyncio.sleep(wait_time)
             else:
                 # After 3 failed attempts, update status to failed and use placeholder text
                 error_message = f"Failed to translate batch {batch_index+1} after {max_retries} attempts: {error_msg}"
                 
-                async with progress_lock:
-                    if update_status_func:
-                        update_status_func(
-                            message_id=message_id, 
-                            progress=progress, 
-                            status_type="failed", 
-                            message=f"Translation failed: {error_message}"
-                        )
+                if update_status_func:
+                    update_status_func(
+                        message_id=message_id, 
+                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                        status_type="failed", 
+                        message=f"Translation failed: {error_message}"
+                    )
                 
                 # After 3 failed attempts, use the source text as fallback
                 translated_text = "<failed>"+batch+"</failed>"
                 
-                async with progress_lock:
-                    if update_status_func:
-                        update_status_func(
-                            message_id=message_id, 
-                            progress=progress, 
-                            status_type="started", 
-                            message=f"Translation failed after {max_retries} attempts. Using source text for batch {batch_index+1}/{total_batches}."
-                        )
+                if update_status_func:
+                    update_status_func(
+                        message_id=message_id, 
+                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                        status_type="started", 
+                        message=f"Translation failed after {max_retries} attempts. Using source text for batch {batch_index+1}/{total_batches}."
+                    )
     
     # Return the batch index along with the translated text to maintain order
     return (batch_index, translated_text)
@@ -419,7 +408,7 @@ async def translate_segments(
     try:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Process results
+        # Process results and track progress more accurately
         completed = 0
         for i, result in enumerate(results):
             try:
@@ -431,7 +420,7 @@ async def translate_segments(
                     if update_status_func:
                         update_status_func(
                             message_id=message_id,
-                            progress=max(1, int((completed / total_batches) * 100)),
+                            progress=max(10, int(((completed + 1) / total_batches) * 90) + 10),  # 10-100% range
                             status_type="failed",
                             message=f"Translation failed: {error_message}"
                         )
@@ -442,24 +431,26 @@ async def translate_segments(
                     batch_index, translated_text = result
                     translated_batches[batch_index] = translated_text
                 
-                # Update overall progress
+                # Update overall progress more accurately
                 completed += 1
-                # Ensure progress is never 0 and reaches 100 when all batches are done
-                overall_progress = max(1, int((completed / total_batches) * 100))
-                if completed == total_batches:
-                    overall_progress = 100
+                # Progress from 10% to 100% (reserving 0-10% for segmentation)
+                overall_progress = min(100, max(10, int((completed / total_batches) * 90) + 10))
                 
-                # Log progress only at completion
-                if completed == total_batches:
-                    logger.info(f"[{message_id}] All {total_batches} batches completed successfully")
+                # Log progress at key milestones
+                if completed % max(1, total_batches // 4) == 0 or completed == total_batches:
+                    logger.info(f"[{message_id}] Completed {completed}/{total_batches} batches ({overall_progress}%)")
                 
-                # Always update status after each batch is completed
+                # Update status after each batch completion
                 if update_status_func:
+                    status_message = f"Completed {completed}/{total_batches} batches"
+                    if completed == total_batches:
+                        status_message = "All batches completed, finalizing translation"
+                    
                     update_status_func(
                         message_id,
                         overall_progress,
                         "started",
-                        f"Completed {completed}/{total_batches} batches ({overall_progress}%)"
+                        status_message
                     )
             except Exception as e:
                 error_message = f"Error processing result for batch {i+1}: {str(e)}"

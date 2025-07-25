@@ -9,6 +9,7 @@ from celery import Celery, signals
 from dotenv import load_dotenv
 import logging
 from kombu import Queue
+import redis
 
 # Load environment variables
 load_dotenv()
@@ -20,11 +21,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger("celery-app")
 
-# Configure Redis connection
+# Configure Redis connection constants
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+
+def get_redis_client():
+    """Get a Redis client connection with consistent configuration"""
+    return redis.Redis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        db=REDIS_DB,
+        password=REDIS_PASSWORD,
+        decode_responses=True
+    )
 
 # Configure Celery using environment variables if available
 BROKER_URL = os.getenv("CELERY_BROKER_URL")
@@ -150,13 +161,7 @@ def process_message(self, message_data):
         
         # Store the task ID in Redis for later termination if needed
         task_id = self.request.id
-        redis_client = redis.Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            password=REDIS_PASSWORD,
-            decode_responses=True
-        )
+        redis_client = get_redis_client()
         redis_client.hset(f"message:{message_id}", "task_id", task_id)
         
         # Extract metadata if available
@@ -240,13 +245,7 @@ def process_message(self, message_data):
         # Step 4: Save the translated text to Redis
         if result and 'translated_text' in result:
             # Connect to Redis
-            redis_client = redis.Redis(
-                host=os.getenv("REDIS_HOST", "localhost"),
-                port=int(os.getenv("REDIS_PORT", 6379)),
-                db=int(os.getenv("REDIS_DB", 0)),
-                password=os.getenv("REDIS_PASSWORD", None),
-                decode_responses=True
-            )
+            redis_client = get_redis_client()
             
             # Store the translation result in a separate Redis key
             redis_client.hset(
@@ -385,13 +384,7 @@ def update_status(message_id, progress, status_type, message=None, webhook_url=N
     
     try:
         # Connect to Redis
-        redis_client = redis.Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            password=REDIS_PASSWORD,
-            decode_responses=True
-        )
+        redis_client = get_redis_client()
         
         # Create status data
         status_data = {
