@@ -68,9 +68,10 @@ jobs:
             echo "⏳ Waiting for API to start..."
             sleep 15
 
-            # Restart Nginx if it was running (to proxy or coexist)
-            echo "🔄 Restarting web services if needed..."
+            # Restart Nginx to proxy to the FastAPI container
+            echo "🔄 Starting Nginx reverse proxy..."
             sudo systemctl start nginx || echo "Nginx start skipped"
+            sudo systemctl reload nginx || echo "Nginx reload skipped"
 
             # Quick verification
             echo "✅ Deployment completed, checking status..."
