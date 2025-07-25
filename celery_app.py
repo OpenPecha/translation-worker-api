@@ -251,7 +251,7 @@ def process_message(self, message_data):
             api_key=api_key,
             source_lang=source_lang,
             target_lang=target_lang,
-            update_status_func=update_status_direct,  # Use direct status updates for immediate progress
+            update_status_func=update_status_direct_async,  # Use async status updates for proper execution
             batch_size=batch_size,
             max_workers=max_workers
         ))
@@ -433,6 +433,38 @@ def update_status_direct(message_id, progress, status_type, message=None):
         
     except Exception as e:
         logger.error(f"❌ Failed to update status directly for message {message_id}: {str(e)}")
+        return False
+
+async def update_status_direct_async(message_id, progress, status_type, message=None):
+    """
+    Async version of update_status_direct for use in async contexts
+    
+    This function updates status immediately without going through Celery queue.
+    Use this from async functions like translate_segments for real-time progress updates.
+    
+    Args:
+        message_id (str): Unique identifier for the translation job
+        progress (float): Progress percentage (0-100)
+        status_type (str): Status type (pending, started, completed, failed)
+        message (str, optional): Status message or error details
+    
+    Returns:
+        bool: True if status was updated successfully, False otherwise
+    """
+    import json
+    import asyncio
+    
+    def _sync_update():
+        """Synchronous update function to run in thread"""
+        return update_status_direct(message_id, progress, status_type, message)
+    
+    try:
+        # Run the synchronous Redis update in a thread to avoid blocking
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _sync_update)
+        return result
+    except Exception as e:
+        logger.error(f"❌ Failed to update status async for message {message_id}: {str(e)}")
         return False
 
 @celery_app.task(name="update_status")

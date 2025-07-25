@@ -254,12 +254,22 @@ async def translate_batch(
                 
                 # Only update status on retries to inform about issues
                 if update_status_func:
-                    update_status_func(
-                        message_id=message_id, 
-                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
-                        status_type="started", 
-                        message=f"Retrying batch {batch_index+1}/{total_batches} (attempt {retry_count+1})"
-                    )
+                    # Check if the update function is async
+                    import asyncio
+                    if asyncio.iscoroutinefunction(update_status_func):
+                        await update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="started", 
+                            message=f"Retrying batch {batch_index+1}/{total_batches} (attempt {retry_count+1})"
+                        )
+                    else:
+                        update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="started", 
+                            message=f"Retrying batch {batch_index+1}/{total_batches} (attempt {retry_count+1})"
+                        )
             
             # Call the translation function
             # Debug log all parameters to identify any issues
@@ -302,12 +312,22 @@ async def translate_batch(
                 wait_time = 60  # seconds
                 
                 if update_status_func:
-                    update_status_func(
-                        message_id=message_id, 
-                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
-                        status_type="started", 
-                        message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
-                    )
+                    # Check if the update function is async
+                    import asyncio
+                    if asyncio.iscoroutinefunction(update_status_func):
+                        await update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="started", 
+                            message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
+                        )
+                    else:
+                        update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="started", 
+                            message=f"Translation failed, waiting {wait_time} seconds before retry {retry_count+1}/{max_retries}"
+                        )
                 
                 await asyncio.sleep(wait_time)
             else:
@@ -315,23 +335,43 @@ async def translate_batch(
                 error_message = f"Failed to translate batch {batch_index+1} after {max_retries} attempts: {error_msg}"
                 
                 if update_status_func:
-                    update_status_func(
-                        message_id=message_id, 
-                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
-                        status_type="failed", 
-                        message=f"Translation failed: {error_message}"
-                    )
+                    # Check if the update function is async
+                    import asyncio
+                    if asyncio.iscoroutinefunction(update_status_func):
+                        await update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="failed", 
+                            message=f"Translation failed: {error_message}"
+                        )
+                    else:
+                        update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="failed", 
+                            message=f"Translation failed: {error_message}"
+                        )
                 
                 # After 3 failed attempts, use the source text as fallback
                 translated_text = "<failed>"+batch+"</failed>"
                 
                 if update_status_func:
-                    update_status_func(
-                        message_id=message_id, 
-                        progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
-                        status_type="started", 
-                        message=f"Translation failed after {max_retries} attempts. Using source text for batch {batch_index+1}/{total_batches}."
-                    )
+                    # Check if the update function is async
+                    import asyncio
+                    if asyncio.iscoroutinefunction(update_status_func):
+                        await update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="started", 
+                            message=f"Translation failed after {max_retries} attempts. Using source text for batch {batch_index+1}/{total_batches}."
+                        )
+                    else:
+                        update_status_func(
+                            message_id=message_id, 
+                            progress=max(10, int(((batch_index + 1) / total_batches) * 90) + 10), 
+                            status_type="started", 
+                            message=f"Translation failed after {max_retries} attempts. Using source text for batch {batch_index+1}/{total_batches}."
+                        )
     
     # Return the batch index along with the translated text to maintain order
     return (batch_index, translated_text)
@@ -418,12 +458,22 @@ async def translate_segments(
                     
                     # Update status to failed for this batch
                     if update_status_func:
-                        update_status_func(
-                            message_id=message_id,
-                            progress=max(10, int(((completed + 1) / total_batches) * 90) + 10),  # 10-100% range
-                            status_type="failed",
-                            message=f"Translation failed: {error_message}"
-                        )
+                        # Check if the update function is async
+                        import asyncio
+                        if asyncio.iscoroutinefunction(update_status_func):
+                            await update_status_func(
+                                message_id=message_id,
+                                progress=max(10, int(((completed + 1) / total_batches) * 90) + 10),  # 10-100% range
+                                status_type="failed",
+                                message=f"Translation failed: {error_message}"
+                            )
+                        else:
+                            update_status_func(
+                                message_id=message_id,
+                                progress=max(10, int(((completed + 1) / total_batches) * 90) + 10),  # 10-100% range
+                                status_type="failed",
+                                message=f"Translation failed: {error_message}"
+                            )
                     
                     # Use fallback text for failed batch
                     translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"
@@ -446,12 +496,22 @@ async def translate_segments(
                     if completed == total_batches:
                         status_message = "All batches completed, finalizing translation"
                     
-                    update_status_func(
-                        message_id,
-                        overall_progress,
-                        "started",
-                        status_message
-                    )
+                    # Check if the update function is async
+                    import asyncio
+                    if asyncio.iscoroutinefunction(update_status_func):
+                        await update_status_func(
+                            message_id,
+                            overall_progress,
+                            "started",
+                            status_message
+                        )
+                    else:
+                        update_status_func(
+                            message_id,
+                            overall_progress,
+                            "started",
+                            status_message
+                        )
             except Exception as e:
                 error_message = f"Error processing result for batch {i+1}: {str(e)}"
                 logger.error(f"[{message_id}] {error_message}")
