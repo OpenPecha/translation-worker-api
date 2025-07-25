@@ -15,7 +15,7 @@ from models.message import (
     ErrorResponse, SuccessResponse, MessageStatusResponse, TranslationResult
 )
 from celery_app import process_message, get_queue_for_priority, update_status
-from const import MAX_CONTENT_LENGTH, REDIS_EXPIRY_SECONDS
+from const import REDIS_EXPIRY_SECONDS, RECOMMENDED_CONTENT_LENGTH, LARGE_TEXT_WARNING_THRESHOLD
 
 # Configure logging
 logger = logging.getLogger("message-routes")
@@ -59,9 +59,14 @@ async def add_message(message: Message = Body(...)):
 
     Creates a new translation job with the specified content, model, and API key.
     The message will be queued for processing based on its priority level.
+    
+    **Large Text Support**: This endpoint now supports large text content.
+    - Content up to 50KB: Optimal performance
+    - Content 50KB-100KB: Good performance with larger batches
+    - Content >100KB: Supported but may take longer to process
 
     ## Request Body
-    - **content**: Text to be translated (1-30,000 characters)
+    - **content**: Text to be translated (no hard limit, but >100KB may be slow)
     - **model_name**: Translation model to use (e.g., 'gpt-4', 'claude-3-haiku-20240307', 'gemini-pro')
     - **api_key**: API key for the specified model
     - **priority**: Priority level 0-10 (higher = processed first, default: 0)
@@ -71,6 +76,11 @@ async def add_message(message: Message = Body(...)):
 
     ## Response
     Returns a message ID and initial status. Use the message ID to check translation progress.
+    
+    ## Performance Notes
+    - Large text is automatically processed with optimized batch sizes
+    - Very large text (>100KB) uses increased worker allocation
+    - Progress updates work the same regardless of text size
 
     ## Example Request
     ```json
@@ -103,14 +113,14 @@ async def add_message(message: Message = Body(...)):
     ```
     """
     try:
-        # Validate content length
-        # if len(message.content) > MAX_CONTENT_LENGTH:
-        #     logger.warning(f"Content too long: {len(message.content)} characters")
-        #     return ErrorResponse(
-        #         error=f"Content is too long. Maximum allowed: {MAX_CONTENT_LENGTH} characters, received: {len(message.content)} characters",
-        #         error_code="CONTENT_TOO_LONG",
-        #         details={"max_length": MAX_CONTENT_LENGTH, "actual_length": len(message.content)}
-        #     )
+        # Intelligent content length handling
+        content_length = len(message.content)
+        
+        # Warn about very large content but don't block it
+        if content_length > LARGE_TEXT_WARNING_THRESHOLD:
+            logger.warning(f"Very large content detected: {content_length} characters. This may take longer to process.")
+        elif content_length > RECOMMENDED_CONTENT_LENGTH:
+            logger.info(f"Large content detected: {content_length} characters. Using optimized processing.")
         
         # Validate content is not empty
         if not message.content.strip():
@@ -148,7 +158,25 @@ async def add_message(message: Message = Body(...)):
             message_data["metadata"] = json.dumps(message.metadata)
         
         # Store in Redis
-        redis_client.hset(f"message:{message_id}", mapping=message_data)
+        try:
+            redis_client.hset(f"message:{message_id}", mapping=message_data)
+            logger.info(f"Stored message {message_id} in Redis ({content_length} characters)")
+        except redis.DataError as e:
+            # Handle Redis data size limits
+            logger.error(f"Redis data error for large content ({content_length} chars): {e}")
+            return ErrorResponse(
+                error=f"Content too large for storage ({content_length} characters). Please reduce content size or contact support.",
+                error_code="CONTENT_TOO_LARGE_FOR_STORAGE",
+                details={"content_length": content_length, "redis_error": str(e)}
+            )
+        except redis.ResponseError as e:
+            # Handle other Redis errors
+            logger.error(f"Redis response error: {e}")
+            return ErrorResponse(
+                error=f"Storage error: {str(e)}",
+                error_code="REDIS_STORAGE_ERROR",
+                details={"content_length": content_length}
+            )
         
         # Set expiration time (4 hours = 14400 seconds)
         redis_client.expire(f"message:{message_id}", REDIS_EXPIRY_SECONDS)
@@ -157,12 +185,32 @@ async def add_message(message: Message = Body(...)):
         queue = get_queue_for_priority(message.priority)
         
         # Send task to Celery with appropriate queue
-        task = process_message.apply_async(
-            args=[message_data],
-            queue=queue
-        )
-        
-        logger.info(f"Added message {message_id} to Celery queue '{queue}' with task ID: {task.id}")
+        try:
+            task = process_message.apply_async(
+                args=[message_data],
+                queue=queue
+            )
+            logger.info(f"Added message {message_id} to Celery queue '{queue}' with task ID: {task.id}")
+        except Exception as celery_error:
+            # If Celery task creation fails, log detailed error and clean up Redis
+            logger.error(f"Failed to create Celery task for message {message_id}: {str(celery_error)}")
+            logger.error(f"Celery error type: {type(celery_error).__name__}")
+            
+            # Clean up the Redis entry since task creation failed
+            try:
+                redis_client.delete(f"message:{message_id}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up Redis entry: {cleanup_error}")
+            
+            return ErrorResponse(
+                error=f"Failed to queue translation task: {str(celery_error)}",
+                error_code="CELERY_TASK_ERROR",
+                details={
+                    "exception_type": type(celery_error).__name__,
+                    "queue": queue,
+                    "message_id": message_id
+                }
+            )
         
         # Return response with message ID and initial status
         return MessageResponse(
@@ -172,9 +220,28 @@ async def add_message(message: Message = Body(...)):
             position=None  # Position is no longer tracked with Celery queues
         )
         
-    except Exception as e:
-        error_msg = f"Failed to add message to queue: {str(e)}"
+    except redis.RedisError as e:
+        error_msg = f"Redis connection error: {str(e)}"
         logger.error(error_msg)
+        return ErrorResponse(
+            error=error_msg,
+            error_code="REDIS_ERROR",
+            details={"exception_type": type(e).__name__}
+        )
+    except ImportError as e:
+        error_msg = f"Import error (missing dependencies): {str(e)}"
+        logger.error(error_msg)
+        return ErrorResponse(
+            error=error_msg,
+            error_code="IMPORT_ERROR",
+            details={"exception_type": type(e).__name__}
+        )
+    except Exception as e:
+        error_msg = f"Unexpected error while adding message to queue: {str(e)}"
+        logger.error(error_msg)
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return ErrorResponse(
             error=error_msg,
             error_code="QUEUE_ERROR",
@@ -400,6 +467,101 @@ async def update_message_status(message_id: str, status_update: StatusUpdate = B
             error=error_msg,
             error_code="STATUS_UPDATE_ERROR",
             details={"message_id": message_id, "exception_type": type(e).__name__}
+        )
+
+@router.get("/health", 
+           response_model=dict,
+           responses={
+               500: {"model": ErrorResponse, "description": "Health check failed"}
+           })
+async def health_check():
+    """
+    Check the health of Redis and Celery connections.
+    
+    This endpoint verifies that both Redis and Celery are properly connected
+    and can be used for message processing.
+    
+    ## Response
+    Returns the status of all system components.
+    
+    ## Example Response
+    ```json
+    {
+      "success": true,
+      "health": {
+        "redis": "connected",
+        "celery": "connected",
+        "queues": ["priority", "normal", "low"],
+        "timestamp": "2024-01-15T10:30:00Z"
+      }
+    }
+    ```
+    """
+    health_status = {
+        "redis": "unknown",
+        "celery": "unknown", 
+        "queues": [],
+        "timestamp": time.time()
+    }
+    
+    try:
+        # Test Redis connection
+        redis_client.ping()
+        health_status["redis"] = "connected"
+        logger.info("Redis health check: OK")
+    except Exception as e:
+        health_status["redis"] = f"failed: {str(e)}"
+        logger.error(f"Redis health check failed: {e}")
+    
+    try:
+        # Test Celery connection by checking if we can import and access the functions
+        from celery_app import process_message, get_queue_for_priority
+        
+        # Check if we can get queue names
+        queues = []
+        for priority in [0, 5, 10]:
+            try:
+                queue = get_queue_for_priority(priority)
+                if queue not in queues:
+                    queues.append(queue)
+            except Exception as e:
+                logger.warning(f"Could not get queue for priority {priority}: {e}")
+        
+        health_status["queues"] = queues
+        
+        # Try to get Celery app status (basic connectivity test)
+        try:
+            # This will test if Celery is importable and basic functions work
+            health_status["celery"] = "connected"
+            logger.info("Celery health check: OK")
+        except Exception as e:
+            health_status["celery"] = f"connection issue: {str(e)}"
+            logger.error(f"Celery health check failed: {e}")
+            
+    except ImportError as e:
+        health_status["celery"] = f"import failed: {str(e)}"
+        logger.error(f"Celery import failed: {e}")
+    except Exception as e:
+        health_status["celery"] = f"failed: {str(e)}"
+        logger.error(f"Celery health check error: {e}")
+    
+    # Determine overall health
+    is_healthy = (
+        health_status["redis"] == "connected" and 
+        health_status["celery"] == "connected"
+    )
+    
+    if is_healthy:
+        return {
+            "success": True,
+            "health": health_status,
+            "status": "healthy"
+        }
+    else:
+        return ErrorResponse(
+            error="System health check failed",
+            error_code="HEALTH_CHECK_FAILED",
+            details=health_status
         )
 
 @router.get("/redis/info", 

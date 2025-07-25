@@ -27,7 +27,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
-from const import MAX_CONTENT_LENGTH, REDIS_EXPIRY_SECONDS
+from const import REDIS_EXPIRY_SECONDS, LARGE_TEXT_WARNING_THRESHOLD, LARGE_TEXT_BATCH_SIZE, SMALL_TEXT_BATCH_SIZE
 
 def get_redis_client():
     """Get a Redis client connection with consistent configuration"""
@@ -222,10 +222,24 @@ def process_message(self, message_data):
             message=f"Starting batch translation with {segment_count} segments"
         )
    
-        # Get batch size from environment or use default
+        # Get batch size from environment or use intelligent defaults based on content length
         import os
-        batch_size = int(os.getenv("SEGMENT_BATCH_SIZE", 10))
+        content_length = len(content)
+        
+        # Use larger batches for large text to improve efficiency
+        if content_length > LARGE_TEXT_WARNING_THRESHOLD:
+            default_batch_size = LARGE_TEXT_BATCH_SIZE
+            logger.info(f"Using large text batch size ({default_batch_size}) for content with {content_length} characters")
+        else:
+            default_batch_size = SMALL_TEXT_BATCH_SIZE
+            
+        batch_size = int(os.getenv("SEGMENT_BATCH_SIZE", default_batch_size))
         max_workers = int(os.getenv("MAX_TRANSLATION_WORKERS", 4))
+        
+        # For very large text, increase max workers to handle the load
+        if content_length > LARGE_TEXT_WARNING_THRESHOLD:
+            max_workers = min(8, max_workers * 2)  # Double workers but cap at 8
+            logger.info(f"Increased max workers to {max_workers} for large text processing")
         
         # Translate segments in batches
         import asyncio

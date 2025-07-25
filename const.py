@@ -26,7 +26,13 @@ The input will be provided in array of strings. Translate the content preserving
                
                
 # Text segmentation constants
-MAX_CONTENT_LENGTH = 30000  # Maximum number of characters allowed in content
+# MAX_CONTENT_LENGTH = 30000  # Removed - now supporting large text
+RECOMMENDED_CONTENT_LENGTH = 50000  # Recommended limit for optimal performance
+LARGE_TEXT_WARNING_THRESHOLD = 100000  # Warn user if text is very large (100KB)
+
+# Batch processing for large text
+LARGE_TEXT_BATCH_SIZE = 20  # Larger batch size for big documents
+SMALL_TEXT_BATCH_SIZE = 10  # Normal batch size for smaller text
 
 # Redis expiration constants
 # All Redis keys (messages and translation results) will automatically expire after this time

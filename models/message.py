@@ -74,7 +74,7 @@ class TranslationResult(BaseModel):
     }
 
 class Message(BaseModel):
-    content: str = Field(..., description="Text content to be translated", min_length=1, max_length=30000)
+    content: str = Field(..., description="Text content to be translated", min_length=1)
     model_name: str = Field(..., description="Name of the translation model to use (e.g., 'gpt-4', 'claude-3-haiku-20240307', 'gemini-pro')")
     api_key: str = Field(..., description="API key for the translation model", min_length=1)
     priority: Optional[int] = Field(0, description="Priority level (0-10, higher numbers = higher priority)", ge=0, le=10)
