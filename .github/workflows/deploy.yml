@@ -48,9 +48,29 @@ jobs:
             echo "🛑 Stopping services..."
             sudo docker-compose down --remove-orphans
 
-                        # Rebuild and start services (faster deployment)
+            # Stop services that might be using port 80
+            echo "🔍 Checking and freeing port 80..."
+            sudo systemctl stop nginx || echo "Nginx not running"
+            sudo systemctl stop apache2 || echo "Apache not running"
+
+            # Kill any process using port 80
+            sudo fuser -k 80/tcp || echo "No process found on port 80"
+
+            # Wait for ports to be released
+            echo "⏳ Waiting for port 80 to be freed..."
+            sleep 5
+
+            # Rebuild and start services (faster deployment)
             echo "🔨 Building and starting services..."
             sudo docker-compose up -d --build --force-recreate
+
+            # Wait for API to be ready
+            echo "⏳ Waiting for API to start..."
+            sleep 15
+
+            # Restart Nginx if it was running (to proxy or coexist)
+            echo "🔄 Restarting web services if needed..."
+            sudo systemctl start nginx || echo "Nginx start skipped"
 
             # Quick verification
             echo "✅ Deployment completed, checking status..."
