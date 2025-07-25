@@ -15,7 +15,7 @@ from models.message import (
     ErrorResponse, SuccessResponse, MessageStatusResponse, TranslationResult
 )
 from celery_app import process_message, get_queue_for_priority, update_status
-from const import MAX_CONTENT_LENGTH
+from const import MAX_CONTENT_LENGTH, REDIS_EXPIRY_SECONDS
 
 # Configure logging
 logger = logging.getLogger("message-routes")
@@ -149,6 +149,9 @@ async def add_message(message: Message = Body(...)):
         
         # Store in Redis
         redis_client.hset(f"message:{message_id}", mapping=message_data)
+        
+        # Set expiration time (4 hours = 14400 seconds)
+        redis_client.expire(f"message:{message_id}", REDIS_EXPIRY_SECONDS)
         
         # Determine which queue to use based on priority
         queue = get_queue_for_priority(message.priority)
@@ -376,6 +379,9 @@ async def update_message_status(message_id: str, status_update: StatusUpdate = B
             json.dumps(status_data)
         )
         
+        # Refresh expiration time to keep active messages alive
+        redis_client.expire(f"message:{message_id}", REDIS_EXPIRY_SECONDS)
+        
         logger.info(f"Updated status for message {message_id}: {status_update.status_type} ({status_update.progress}%)")
         
         return SuccessResponse(
@@ -394,5 +400,69 @@ async def update_message_status(message_id: str, status_update: StatusUpdate = B
             error=error_msg,
             error_code="STATUS_UPDATE_ERROR",
             details={"message_id": message_id, "exception_type": type(e).__name__}
+        )
+
+@router.get("/redis/info", 
+           response_model=dict,
+           responses={
+               500: {"model": ErrorResponse, "description": "Internal Server Error"}
+           })
+async def get_redis_info():
+    """
+    Get Redis information including key counts and expiration details.
+    
+    This endpoint provides information about Redis keys and their expiration times
+    for monitoring and maintenance purposes.
+    
+    ## Response
+    Returns information about Redis keys, their count, and expiration settings.
+    
+    ## Example Response
+    ```json
+    {
+      "success": true,
+      "redis_info": {
+        "message_keys": 5,
+        "translation_result_keys": 3,
+        "expiry_hours": 4,
+        "expiry_seconds": 14400,
+        "sample_ttl": {
+          "message:abc-123": 3456,
+          "translation_result:abc-123": 3456
+        }
+      }
+    }
+    ```
+    """
+    try:
+        # Get all message and translation result keys
+        message_keys = redis_client.keys("message:*")
+        result_keys = redis_client.keys("translation_result:*")
+        
+        # Sample TTL information for first few keys
+        sample_ttl = {}
+        for key in (message_keys[:3] + result_keys[:3]):  # Sample first 3 of each type
+            ttl = redis_client.ttl(key)
+            sample_ttl[key] = ttl if ttl > 0 else "No expiration set"
+        
+        return {
+            "success": True,
+            "redis_info": {
+                "message_keys": len(message_keys),
+                "translation_result_keys": len(result_keys),
+                "expiry_hours": REDIS_EXPIRY_SECONDS // 3600,
+                "expiry_seconds": REDIS_EXPIRY_SECONDS,
+                "sample_ttl": sample_ttl,
+                "total_keys": len(message_keys) + len(result_keys)
+            }
+        }
+        
+    except Exception as e:
+        error_msg = f"Failed to get Redis info: {str(e)}"
+        logger.error(error_msg)
+        return ErrorResponse(
+            error=error_msg,
+            error_code="REDIS_INFO_ERROR",
+            details={"exception_type": type(e).__name__}
         )
 

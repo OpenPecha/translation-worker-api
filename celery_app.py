@@ -27,6 +27,8 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
+from const import MAX_CONTENT_LENGTH, REDIS_EXPIRY_SECONDS
+
 def get_redis_client():
     """Get a Redis client connection with consistent configuration"""
     return redis.Redis(
@@ -40,6 +42,7 @@ def get_redis_client():
 # Configure Celery using environment variables if available
 BROKER_URL = os.getenv("CELERY_BROKER_URL")
 RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
+
 
 # If environment variables aren't set, construct URLs from Redis settings
 if not BROKER_URL:
@@ -164,6 +167,9 @@ def process_message(self, message_data):
         redis_client = get_redis_client()
         redis_client.hset(f"message:{message_id}", "task_id", task_id)
         
+        # Set expiration for message data (4 hours = 14400 seconds)
+        redis_client.expire(f"message:{message_id}", REDIS_EXPIRY_SECONDS)
+        
         # Extract metadata if available
         metadata = message_data.get('metadata', {})
         if isinstance(metadata, str):
@@ -188,14 +194,11 @@ def process_message(self, message_data):
         )
         
         # Step 1: Segment the text into smaller chunks
-        update_status(
+        update_status_direct(
             message_id=message_id,
             progress=1,
             status_type="started",
-            message="Segmenting text for translation",
-            webhook_url=webhook,
-            model_name=model_name,
-            metadata=metadata
+            message="Segmenting text for translation"
         )
         
         # Use segmentation based on the use_segmentation parameter
@@ -212,14 +215,11 @@ def process_message(self, message_data):
         from celery_worker import translate_text as translate_func
         
         # Step 3: Process segments in batches with the translation function
-        update_status(
+        update_status_direct(
             message_id=message_id,
             progress=10,
             status_type="started",
-            message=f"Starting batch translation with {segment_count} segments",
-            webhook_url=webhook,
-            model_name=model_name,
-            metadata=metadata
+            message=f"Starting batch translation with {segment_count} segments"
         )
    
         # Get batch size from environment or use default
@@ -237,7 +237,7 @@ def process_message(self, message_data):
             api_key=api_key,
             source_lang=source_lang,
             target_lang=target_lang,
-            update_status_func=update_status,
+            update_status_func=update_status_direct,  # Use direct status updates for immediate progress
             batch_size=batch_size,
             max_workers=max_workers
         ))
@@ -257,8 +257,11 @@ def process_message(self, message_data):
                 }
             )
             
-            # Set expiration time (7 days)
-            redis_client.expire(f"translation_result:{message_id}", 60 * 60 * 24 * 7)
+            # Set expiration time (4 hours = 14400 seconds)
+            redis_client.expire(f"translation_result:{message_id}", REDIS_EXPIRY_SECONDS)
+            
+            # Also refresh the expiration time for the message data
+            redis_client.expire(f"message:{message_id}", REDIS_EXPIRY_SECONDS)
             
             # Also update the message status with the translated text
             # Get the current message data
@@ -361,10 +364,69 @@ def process_message(self, message_data):
             "error": error_message
         }
 
+def update_status_direct(message_id, progress, status_type, message=None):
+    """
+    Update the status of a translation job directly in Redis (synchronous)
+    
+    This function updates status immediately without going through Celery queue.
+    Use this for real-time progress updates during translation.
+    
+    Args:
+        message_id (str): Unique identifier for the translation job
+        progress (float): Progress percentage (0-100)
+        status_type (str): Status type (pending, started, completed, failed)
+        message (str, optional): Status message or error details
+    
+    Returns:
+        bool: True if status was updated successfully, False otherwise
+    """
+    import json
+    
+    try:
+        # Connect to Redis
+        redis_client = get_redis_client()
+        
+        # Create status data
+        status_data = {
+            "progress": progress,
+            "status_type": status_type,
+            "message": message
+        }
+        
+        # Update status in Redis immediately
+        redis_client.hset(
+            f"message:{message_id}",
+            "status",
+            json.dumps(status_data)
+        )
+        
+        # Refresh expiration time (4 hours = 14400 seconds) to keep active translations alive
+        redis_client.expire(f"message:{message_id}", REDIS_EXPIRY_SECONDS)
+        
+        # Verify the update was successful
+        updated_data = redis_client.hgetall(f"message:{message_id}")
+        if updated_data and "status" in updated_data:
+            stored_status = json.loads(updated_data["status"])
+            if stored_status.get("progress") == progress:
+                logger.info(f"✅ Status updated directly for {message_id}: {progress}% - {status_type} - {message}")
+                return True
+            else:
+                logger.warning(f"⚠️ Status update verification failed for {message_id}: expected {progress}%, got {stored_status.get('progress')}%")
+                return False
+        else:
+            logger.warning(f"⚠️ Could not verify status update for {message_id}: no status data found")
+            return False
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to update status directly for message {message_id}: {str(e)}")
+        return False
+
 @celery_app.task(name="update_status")
 def update_status(message_id, progress, status_type, message=None, webhook_url=None, translated_text=None, model_name=None, metadata=None):
     """
     Update the status of a translation job and send webhook notification if webhook_url is provided
+    
+    This is a Celery task for webhook functionality. For immediate status updates, use update_status_direct.
     
     Args:
         message_id (str): Unique identifier for the translation job
@@ -379,26 +441,11 @@ def update_status(message_id, progress, status_type, message=None, webhook_url=N
     Returns:
         bool: True if status was updated successfully, False otherwise
     """
-    import redis
     import json
     
     try:
-        # Connect to Redis
-        redis_client = get_redis_client()
-        
-        # Create status data
-        status_data = {
-            "progress": progress,
-            "status_type": status_type,
-            "message": message
-        }
-        
-        # Update status in Redis
-        redis_client.hset(
-            f"message:{message_id}",
-            "status",
-            json.dumps(status_data)
-        )
+        # First update status directly
+        update_status_direct(message_id, progress, status_type, message)
         
         # Send webhook notification if webhook_url is provided
         if webhook_url:

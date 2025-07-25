@@ -25,5 +25,14 @@ The input will be provided in array of strings. Translate the content preserving
 """
                
                
-MAX_CONTENT_LENGTH = 100000
-         
+# Text segmentation constants
+MAX_CONTENT_LENGTH = 30000  # Maximum number of characters allowed in content
+
+# Redis expiration constants
+# All Redis keys (messages and translation results) will automatically expire after this time
+# This prevents Redis memory from growing indefinitely and ensures cleanup of old data
+REDIS_EXPIRY_HOURS = 4  # Hours after which Redis keys expire
+REDIS_EXPIRY_SECONDS = REDIS_EXPIRY_HOURS * 60 * 60  # 4 hours = 14400 seconds
+
+# Note: Expiration time is refreshed on every status update, so active translations
+# won't expire while being processed. Only idle/completed translations will expire. 
