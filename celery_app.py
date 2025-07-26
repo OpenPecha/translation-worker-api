@@ -84,11 +84,11 @@ celery_app.conf.task_queues = [
     Queue(QUEUE_DEFAULT),
 ]
 
-celery_app.conf.task_default_queue = QUEUE_DEFAULT
+celery_app.conf.task_default_queue = QUEUE_HIGH_PRIORITY
 
 celery_app.conf.task_routes = {
-    'celery_app.process_message': {'queue': QUEUE_DEFAULT},
-    'translate Job': {'queue': QUEUE_DEFAULT},
+    'celery_app.process_message': {'queue': QUEUE_HIGH_PRIORITY},
+    'translate Job': {'queue': QUEUE_HIGH_PRIORITY},
 }
 
 # Add signal handler for task revocation/termination
@@ -661,6 +661,5 @@ def get_queue_for_priority(priority):
     Returns:
         str: Queue name to use
     """
-    if priority and priority >= 5:
-        return QUEUE_HIGH_PRIORITY
-    return QUEUE_DEFAULT
+    # Force all tasks to high priority queue for immediate processing
+    return QUEUE_HIGH_PRIORITY
