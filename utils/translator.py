@@ -383,48 +383,81 @@ async def translate_segments_parallel_ordered(
     
     # Create ThreadPoolExecutor for true parallelism
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Create parallel tasks with batch indices to maintain order
-        tasks = []
-        for batch_index, batch_content in enumerate(batches):
-            task = translate_batch_parallel_ordered(
-                batch_index=batch_index,
-                batch_content=batch_content,
-                model_name=model_name,
-                api_key=api_key,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                executor=executor
-            )
-            tasks.append(task)
-        
-        # Execute all batches in TRUE PARALLEL
+        # Execute all batches in TRUE PARALLEL with REAL-TIME PROGRESS
         try:
-            # This now runs truly in parallel thanks to ThreadPoolExecutor
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Create proper asyncio tasks from coroutines
+            async_tasks = []
+            for batch_index, batch_content in enumerate(batches):
+                coroutine = translate_batch_parallel_ordered(
+                    batch_index=batch_index,
+                    batch_content=batch_content,
+                    model_name=model_name,
+                    api_key=api_key,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    executor=executor
+                )
+                # Create proper asyncio task instead of passing coroutine directly
+                task = asyncio.create_task(coroutine)
+                async_tasks.append((batch_index, task))
             
-            # Sort results by batch_index to maintain original order
+            # Process tasks as they complete for real-time updates
             ordered_results = {}
             successful_batches = 0
             failed_batches = 0
             
-            for result in results:
-                if isinstance(result, Exception):
-                    print(f"Task exception: {result}")
-                    failed_batches += 1
-                    continue
+            pending_tasks = list(async_tasks)
+            
+            while pending_tasks:
+                # Wait for at least one task to complete
+                # Extract just the tasks (not the batch_index) for asyncio.wait
+                task_objects = [task for _, task in pending_tasks]
                 
-                batch_index, batch_result = result
-                ordered_results[batch_index] = batch_result
+                done, pending = await asyncio.wait(
+                    task_objects, 
+                    return_when=asyncio.FIRST_COMPLETED
+                )
                 
-                if batch_result.get("status") == "completed":
-                    successful_batches += 1
-                else:
-                    failed_batches += 1
-                
-                # Progress update
-                if progress_callback:
-                    progress = int(((successful_batches + failed_batches) / total_batches) * 100)
-                    await progress_callback(f"Completed batch {batch_index + 1}/{total_batches} ({progress}%)")
+                # Process completed tasks
+                for completed_task in done:
+                    # Find which batch this was
+                    task_batch_index = None
+                    for i, (batch_idx, task) in enumerate(pending_tasks):
+                        if task == completed_task:
+                            task_batch_index = batch_idx
+                            pending_tasks.pop(i)
+                            break
+                    
+                    try:
+                        result = await completed_task
+                        
+                        if isinstance(result, Exception):
+                            print(f"Task exception: {result}")
+                            failed_batches += 1
+                            ordered_results[task_batch_index] = {
+                                "status": "failed",
+                                "translated_text": f"[Batch {task_batch_index + 1} failed]",
+                                "batch_index": task_batch_index
+                            }
+                        else:
+                            batch_index, batch_result = result
+                            ordered_results[batch_index] = batch_result
+                            
+                            if batch_result.get("status") == "completed":
+                                successful_batches += 1
+                            else:
+                                failed_batches += 1
+                        
+                        # REAL-TIME PROGRESS UPDATE as each batch completes
+                        completed_count = successful_batches + failed_batches
+                        progress_percentage = int((completed_count / total_batches) * 85) + 10  # 10-95% range
+                        
+                        if progress_callback:
+                            await progress_callback(f"Completed batch {completed_count}/{total_batches} ({progress_percentage}%)")
+                        
+                    except Exception as e:
+                        print(f"Error processing completed task: {e}")
+                        failed_batches += 1
             
             # Assemble final translation in correct order
             final_translation_parts = []
@@ -439,7 +472,7 @@ async def translate_segments_parallel_ordered(
             final_text = "\n".join(final_translation_parts)
             total_time = time.time() - start_time
             
-            # Progress completion
+            # Final progress completion
             if progress_callback:
                 await progress_callback(f"Parallel translation completed: {successful_batches}/{total_batches} batches in {total_time:.1f}s")
             

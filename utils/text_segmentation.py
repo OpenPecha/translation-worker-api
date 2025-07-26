@@ -486,30 +486,70 @@ async def translate_segments(
         if update_status_func:
             # Extract progress percentage if available
             progress = 50  # Default mid-progress
+            status_message = message  # Use the actual message from parallel processing
+            
             if "%" in message:
                 try:
-                    progress_match = message.split("(")[1].split("%")[0]
-                    progress = int(progress_match)
+                    # Extract percentage from messages like "Completed batch 3/10 (45%)"
+                    if "(" in message and "%" in message:
+                        progress_part = message.split("(")[1].split("%")[0]
+                        progress = int(progress_part)
+                        # Keep the original message for detailed info
+                        status_message = f"🚀 PARALLEL: {message}"
+                    else:
+                        progress_match = message.split("(")[1].split("%")[0]
+                        progress = int(progress_match)
                 except:
-                    pass
+                    # If parsing fails, try to extract numbers for batch completion
+                    try:
+                        if "Completed batch" in message and "/" in message:
+                            # Extract batch numbers like "Completed batch 3/10"
+                            batch_info = message.split("batch ")[1].split(" ")[0]
+                            if "/" in batch_info:
+                                current, total = batch_info.split("/")
+                                progress = int((int(current) / int(total)) * 85) + 10  # 10-95% range
+                                status_message = f"🚀 PARALLEL: {message}"
+                    except:
+                        pass
             elif "Starting" in message:
                 progress = 10
+                status_message = f"🚀 PARALLEL: {message}"
             elif "completed:" in message:
                 progress = 95
+                status_message = f"🚀 PARALLEL: {message}"
+            elif "Completed batch" in message:
+                # Handle real-time batch completion messages
+                try:
+                    if "/" in message:
+                        # Extract progress from "Completed batch X/Y" format
+                        batch_part = message.split("batch ")[1].split("/")
+                        current_batch = int(batch_part[0])
+                        if "(" in batch_part[1]:
+                            total_batches = int(batch_part[1].split("(")[0].strip())
+                        else:
+                            total_batches = int(batch_part[1].split(" ")[0])
+                        progress = int((current_batch / total_batches) * 85) + 10  # 10-95% range
+                        status_message = f"🚀 PARALLEL: {message}"
+                except:
+                    progress = 50
+                    status_message = f"🚀 PARALLEL: {message}"
+            else:
+                # For any other message, use it as-is with parallel prefix
+                status_message = f"🚀 PARALLEL: {message}"
             
             if asyncio.iscoroutinefunction(update_status_func):
                 await update_status_func(
                     message_id=message_id,
                     progress=progress,
                     status_type="started",
-                    message=f"🚀 PARALLEL: {message}"
+                    message=status_message
                 )
             else:
                 update_status_func(
                     message_id=message_id,
                     progress=progress,
                     status_type="started",
-                    message=f"🚀 PARALLEL: {message}"
+                    message=status_message
                 )
     
     try:

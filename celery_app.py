@@ -246,6 +246,8 @@ def process_message(self, message_data):
         
         # Translate segments in batches
         import asyncio
+        logger.info(f"Starting parallel translation for message {message_id} with {len(segments)} segments")
+        
         result = asyncio.run(translate_segments(
             segments=segments,
             translate_func=translate_func,
@@ -259,8 +261,21 @@ def process_message(self, message_data):
             max_workers=max_workers
         ))
         
+        logger.info(f"Translation completed for message {message_id}. Result type: {type(result)}, Status: {result.get('status') if result else 'None'}")
+        
+        # Debug log the result structure
+        if result:
+            logger.info(f"Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            if isinstance(result, dict) and 'translated_text' in result:
+                text_length = len(result['translated_text']) if result['translated_text'] else 0
+                logger.info(f"Translated text length: {text_length}")
+            else:
+                logger.warning(f"No translated_text in result: {result}")
+        else:
+            logger.error(f"Result is None or empty for message {message_id}")
+        
         # Step 4: Save the translated text to Redis
-        if result and 'translated_text' in result:
+        if result and result.get('status') == 'completed' and 'translated_text' in result and result['translated_text']:
             # Connect to Redis
             redis_client = get_redis_client()
             
@@ -313,18 +328,49 @@ def process_message(self, message_data):
                 metadata=metadata
             )
             
-            
-            
-            
-            
-            
             return {
                 "status": "completed",
                 "message_id": message_id,
                 "translated_text": result["translated_text"]
             }
+        elif result and result.get('status') == 'failed':
+            # Handle parallel translation failure
+            error_message = result.get('error', 'Unknown parallel translation error')
+            logger.error(f"Parallel translation failed for message {message_id}: {error_message}")
+            
+            # Update status to failed
+            update_status(
+                message_id=message_id,
+                progress=0,
+                status_type="failed",
+                message=f"Translation failed: {error_message}",
+                webhook_url=webhook,
+                model_name=model_name,
+                metadata=metadata
+            )
+            
+            return {
+                "status": "failed",
+                "message_id": message_id,
+                "error": error_message
+            }
         else:
-            raise Exception("Translation failed: No translated text returned")
+            # Handle unexpected result structure
+            logger.error(f"Unexpected translation result for message {message_id}: {result}")
+            error_msg = f"Translation failed: Invalid result structure - {result}"
+            
+            # Update status to failed
+            update_status(
+                message_id=message_id,
+                progress=0,
+                status_type="failed",
+                message=error_msg,
+                webhook_url=webhook,
+                model_name=model_name,
+                metadata=metadata
+            )
+            
+            raise Exception(error_msg)
         
     except SoftTimeLimitExceeded:
         # Handle soft time limit exceeded - we're approaching the 5 minute limit
