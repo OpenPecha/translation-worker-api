@@ -301,7 +301,7 @@ async def translate_batch(
                     raise Exception(f"AI translation failed: {error_msg}")
                 elif "translated_text" in result:
                     # Legacy format (just translated_text)
-                translated_text = result["translated_text"].replace('</br>', '\n')
+                    translated_text = result["translated_text"].replace('</br>', '\n')
                     success = True
                 else:
                     # Unexpected result format
@@ -362,7 +362,7 @@ async def translate_batch(
                 # Wait for 1 minute before retrying
                 wait_time = 60  # seconds
                 
-                    if update_status_func:
+                if update_status_func:
                     # Check if the update function is async
                     if asyncio.iscoroutinefunction(update_status_func):
                         await update_status_func(
@@ -384,7 +384,7 @@ async def translate_batch(
                 # After 3 failed attempts, update status to failed and use placeholder text
                 error_message = f"Failed to translate batch {batch_index+1} after {max_retries} attempts: {error_msg}"
                 
-                    if update_status_func:
+                if update_status_func:
                     # Check if the update function is async
                     if asyncio.iscoroutinefunction(update_status_func):
                         await update_status_func(
@@ -404,7 +404,7 @@ async def translate_batch(
                 # After 3 failed attempts, use the source text as fallback
                 translated_text = "<failed>"+batch+"</failed>"
                 
-                    if update_status_func:
+                if update_status_func:
                     # Check if the update function is async
                     if asyncio.iscoroutinefunction(update_status_func):
                         await update_status_func(
@@ -515,12 +515,12 @@ async def translate_segments(
                                 message=f"Translation failed: {error_message}"
                             )
                         else:
-                        update_status_func(
-                            message_id=message_id,
+                            update_status_func(
+                                message_id=message_id,
                                 progress=max(10, int(((completed + 1) / total_batches) * 90) + 10),  # 10-100% range
-                            status_type="failed",
-                            message=f"Translation failed: {error_message}"
-                        )
+                                status_type="failed",
+                                message=f"Translation failed: {error_message}"
+                            )
                     
                     # Use fallback text for failed batch
                     translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"
@@ -552,12 +552,12 @@ async def translate_segments(
                                 status_message
                             )
                         else:
-                    update_status_func(
-                        message_id,
+                            update_status_func(
+                                message_id,
                                 95,  # 95% - final assembly pending
-                        "started",
+                                "started",
                                 status_message
-                    )
+                            )
             except Exception as e:
                 error_message = f"Error processing result for batch {i+1}: {str(e)}"
                 logger.error(f"[{message_id}] {error_message}")
