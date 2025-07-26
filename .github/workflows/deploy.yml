@@ -66,4 +66,8 @@ jobs:
             echo "✅ Deployment completed, checking status..."
             sudo docker-compose ps
 
+            # Restart Nginx to ensure proper proxy configuration
+            echo "🔄 Restarting Nginx..."
+            sudo systemctl restart nginx
+
             echo "🎉 Deployment completed!"
