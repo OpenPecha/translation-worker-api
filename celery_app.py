@@ -53,6 +53,9 @@ if not RESULT_BACKEND:
 # Create Celery app with configured broker and backend
 celery_app = Celery('translation_tasks', broker=BROKER_URL, backend=RESULT_BACKEND)
 
+# Autodiscover tasks in the current module
+celery_app.autodiscover_tasks(['celery_app'])
+
 # Configure Celery for better visibility and stability
 celery_app.conf.update(
     worker_send_task_events=True,
@@ -84,8 +87,7 @@ celery_app.conf.task_queues = [
 celery_app.conf.task_default_queue = QUEUE_DEFAULT
 
 celery_app.conf.task_routes = {
-    'tasks.high_priority_translation': {'queue': QUEUE_HIGH_PRIORITY},
-    'tasks.default_translation': {'queue': QUEUE_DEFAULT},
+    'celery_app.process_message': {'queue': QUEUE_DEFAULT},
     'translate Job': {'queue': QUEUE_DEFAULT},
 }
 
