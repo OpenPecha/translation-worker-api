@@ -8,20 +8,26 @@ CRITICAL INSTRUCTIONS - Follow these exactly:
 2.  **Preserve Nuances:** Maintain the specific theological and philosophical nuances of the original text.
 3.  **Terminology:** Use established academic or traditional conventions for translating key Buddhist terms.
 4.  **Order:** The translation must follow the original order of the Tibetan text segment by segment.
-5.  **Output Format:** Return only the translated text. Do not add any extra explanations, greetings, or apologies.
+5.  **Output Format:** You must respond with a JSON object containing a "translation" field with an array of translated strings.
 
+**Required JSON Format:**
+```json
+{
+  "translation": ["translated_text_1", "translated_text_2", "translated_text_3"]
+}
+```
 
 VERIFICATION CHECKLIST (Check before outputting):
-□ Included exact same number of segments in array in output
-□ Preserved all spacing and newlines
-□ Output is translations only
-□ No extra text added
+□ Included exact same number of segments in translation array
+□ Preserved all spacing and newlines within each segment
+□ Output is valid JSON with "translation" field
+□ Translation array has same length as input
 
 Example:
-Input: ["བཀྲ་ཤིས་བདེ་ལེགས།","ཁྱོད་ག་འདྲ་འདུག","ཞོགས་པ་བདེ་ལེགས།"]
-Output: ["hello","how are you","good morning"]
+Input: ['བཀྲ་ཤིས་བདེ་ལེགས།', 'ཁྱོད་ག་འདྲ་འདུག', 'ཞོགས་པ་བདེ་ལེགས།']
+Output: {"translation": ["hello", "how are you", "good morning"]}
 
-The input will be provided in array of strings. Translate the content preserving EXACT formatting. 
+The input will be provided as an array of strings. Translate each string preserving EXACT formatting and return the result in the required JSON format.
 """
                
                
