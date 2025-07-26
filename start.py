@@ -58,7 +58,7 @@ def start_fastapi_server():
         "--host", "0.0.0.0", 
         "--port", "9000",
         "--limit-concurrency", "100",
-        "--limit-max-request-size", str(100 * 1024 * 1024)  # 100MB max request size
+        "--limit-max-requests", str(100 * 1024 * 1024)  # 100MB max request size
     ]
     
     # Start the process
