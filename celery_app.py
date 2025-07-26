@@ -5,6 +5,7 @@ This module configures Celery with multiple queues for priority handling
 and automatic retry mechanisms for failed tasks.
 """
 import os
+import time
 from celery import Celery, signals
 from dotenv import load_dotenv
 import logging
