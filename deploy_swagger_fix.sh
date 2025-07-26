@@ -34,56 +34,40 @@ sleep 20
 
 echo "🧪 Step 5: Test services..."
 
-# Test FastAPI directly
+# Test FastAPI directly (internal container port)
 echo "Testing FastAPI container:"
-if curl -f http://localhost:8000/health >/dev/null 2>&1; then
-    echo "✅ FastAPI container is running"
+CONTAINER_TEST=$(sudo docker exec translation-worker-api-api-1 curl -f http://localhost:8000/health 2>/dev/null)
+if [ $? -eq 0 ]; then
+    echo "✅ FastAPI container is running internally"
 else
-    echo "❌ FastAPI container not responding"
+    echo "❌ FastAPI container not responding internally"
     echo "📋 Checking logs..."
     sudo docker-compose logs api --tail=10
     exit 1
 fi
 
-# Test Swagger UI at root
-echo "Testing Swagger UI at root:"
-SWAGGER_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/ 2>/dev/null)
+# Test Swagger UI via public port 80
+echo "Testing Swagger UI on port 80:"
+SWAGGER_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80/ 2>/dev/null)
 echo "Swagger UI status: HTTP $SWAGGER_TEST"
 
 if [ "$SWAGGER_TEST" = "200" ]; then
-    echo "✅ Swagger UI is accessible at root!"
+    echo "✅ Swagger UI is accessible on port 80!"
+    echo "🎉 SUCCESS! Swagger UI is accessible at: http://your-server-ip/"
+    echo "🌍 Your domain should now work: https://translation-api.pecha.tools/"
 else
-    echo "❌ Swagger UI not accessible. Checking logs..."
+    echo "❌ Swagger UI not accessible on port 80. Checking logs..."
     sudo docker-compose logs api --tail=5
-fi
-
-# Test through domain (if Nginx is configured)
-echo "Testing through domain:"
-DOMAIN_TEST=$(curl -s -o /dev/null -w "%{http_code}" https://translation-api.pecha.tools/ 2>/dev/null)
-echo "Domain status: HTTPS $DOMAIN_TEST"
-
-if [ "$DOMAIN_TEST" = "200" ]; then
-    echo "🎉 SUCCESS! Swagger UI is now accessible at https://translation-api.pecha.tools/"
-elif [ "$DOMAIN_TEST" = "000" ]; then
-    echo "⚠️  HTTPS not configured yet. Try HTTP:"
-    HTTP_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://translation-api.pecha.tools/ 2>/dev/null)
-    echo "Domain HTTP status: HTTP $HTTP_TEST"
-    if [ "$HTTP_TEST" = "200" ]; then
-        echo "✅ Swagger UI accessible at http://translation-api.pecha.tools/"
-        echo "💡 Consider setting up HTTPS with: sudo certbot --nginx"
-    fi
-else
-    echo "⚠️  Domain test failed. Check Nginx configuration."
 fi
 
 echo ""
 echo "📊 DEPLOYMENT SUMMARY:"
 echo "====================="
 echo "🐳 Docker services: $(sudo docker-compose ps --services --filter 'status=running' | wc -l) running"
-echo "🔗 FastAPI: http://localhost:8000/health"
-echo "📚 Swagger UI: http://localhost:8000/ (root)"
-echo "📖 ReDoc: http://localhost:8000/redoc"
-echo "🌍 Public Domain: https://translation-api.pecha.tools/"
+echo "🔗 FastAPI: http://your-server-ip/health"
+echo "📚 Swagger UI: http://your-server-ip/ (root)"
+echo "📖 ReDoc: http://your-server-ip/redoc"
+echo "🌍 Domain: https://translation-api.pecha.tools/"
 echo ""
 echo "🎯 What's accessible now:"
 echo "  • Swagger UI (API Documentation): https://translation-api.pecha.tools/"
