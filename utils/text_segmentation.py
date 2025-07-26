@@ -495,7 +495,7 @@ async def translate_segments(
                         progress_part = message.split("(")[1].split("%")[0]
                         progress = int(progress_part)
                         # Keep the original message for detailed info
-                        status_message = f"🚀 PARALLEL: {message}"
+                        status_message = f"🚀   {message}"
                     else:
                         progress_match = message.split("(")[1].split("%")[0]
                         progress = int(progress_match)
@@ -508,15 +508,15 @@ async def translate_segments(
                             if "/" in batch_info:
                                 current, total = batch_info.split("/")
                                 progress = int((int(current) / int(total)) * 85) + 10  # 10-95% range
-                                status_message = f"🚀 PARALLEL: {message}"
+                                status_message = f"🚀   {message}"
                     except:
                         pass
             elif "Starting" in message:
                 progress = 10
-                status_message = f"🚀 PARALLEL: {message}"
+                status_message = f"🚀   {message}"
             elif "completed:" in message:
                 progress = 95
-                status_message = f"🚀 PARALLEL: {message}"
+                status_message = f"🚀   {message}"
             elif "Completed batch" in message:
                 # Handle real-time batch completion messages
                 try:
@@ -529,13 +529,13 @@ async def translate_segments(
                         else:
                             total_batches = int(batch_part[1].split(" ")[0])
                         progress = int((current_batch / total_batches) * 85) + 10  # 10-95% range
-                        status_message = f"🚀 PARALLEL: {message}"
+                        status_message = f"🚀   {message}"
                 except:
                     progress = 50
-                    status_message = f"🚀 PARALLEL: {message}"
+                    status_message = f"🚀   {message}"
             else:
                 # For any other message, use it as-is with parallel prefix
-                status_message = f"🚀 PARALLEL: {message}"
+                status_message = f"🚀   {message}"
             
             if asyncio.iscoroutinefunction(update_status_func):
                 await update_status_func(

@@ -38,7 +38,7 @@ async def simulate_parallel_translation(segments: List[str], delay_per_segment: 
     """
     Simulate parallel translation processing using asyncio
     """
-    print(f"🚀 PARALLEL: Processing {len(segments)} segments with {max_workers} workers...")
+    print(f"🚀   Processing {len(segments)} segments with {max_workers} workers...")
     start_time = time.time()
     
     async def translate_segment(index: int, segment: str) -> tuple:
