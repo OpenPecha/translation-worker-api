@@ -31,7 +31,9 @@ logger = logging.getLogger("message-queue-api")
 app = FastAPI(
     title="Translation Queue API",
     description="API for managing translation tasks with Celery and Redis",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/",  # Serve Swagger UI at root instead of /docs
+    redoc_url="/redoc"  # Keep ReDoc at /redoc
 )
 
 # Configure Redis connection
@@ -55,9 +57,9 @@ except redis.exceptions.ConnectionError as e:
     logger.error(f"Failed to connect to Redis: {str(e)}")
     raise
 
-# Root endpoint for health check
-@app.get("/", tags=["health"])
-async def root():
+# Health check endpoint (moved from root since Swagger UI is now at /)
+@app.get("/health", tags=["health"])
+async def health_check():
     """Health check endpoint"""
     return {
         "status": "ok", 

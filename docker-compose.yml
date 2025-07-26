@@ -70,15 +70,14 @@ services:
     restart: always
     command: celery -A celery_app worker --loglevel=info --concurrency=2 -Q high_priority,default -n worker@%h
 
-  # Flower dashboard
+  # Flower dashboard (internal only - no public port)
   flower:
     build: .
     image: pecha-translation-api
     volumes:
       - .:/app
       - ./flower-db:/app/flower-db
-    ports:
-      - "5555:5555"
+    # Remove public port mapping - accessible only internally
     depends_on:
       redis:
         condition: service_healthy
