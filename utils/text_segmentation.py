@@ -437,11 +437,11 @@ async def translate_segments(
     max_workers: int = 4
 ) -> Dict[str, Any]:
     """
-    Translate a list of text segments in batches using multi-threading and track progress.
+    Translate a list of text segments in batches using PARALLEL PROCESSING and track progress.
     
     Args:
         segments (List[str]): List of text segments to translate
-        translate_func (Callable): Function to use for translation
+        translate_func (Callable): Function to use for translation (DEPRECATED - model_name used instead)
         message_id (str): Unique identifier for the translation job
         model_name (str): Model to use for translation
         api_key (str): API key for the translation service
@@ -462,147 +462,107 @@ async def translate_segments(
             "model_used": model_name
         }
     
+    import concurrent.futures
+    from utils.translator import translate_segments_parallel_ordered
     
     # Get max_workers from environment variable if available
     max_workers = int(os.getenv("MAX_TRANSLATION_WORKERS", max_workers))
     
-    # Combine segments into batches
-    batched_segments = batch_segments(segments, batch_size)
+    # Dynamic optimization based on content size
+    total_chars = sum(len(segment) for segment in segments)
+    if total_chars > 50000:
+        max_workers = min(max_workers * 2, 25)  # More workers for large content
+        batch_size = max(batch_size - 5, 5)     # Smaller batches for better parallelism
+        logger.info(f"[{message_id}] Large content detected ({total_chars:,} chars), scaling to {max_workers} workers")
+    elif total_chars > 20000:
+        max_workers = min(max_workers + 5, 15)  # Medium scaling
+        logger.info(f"[{message_id}] Medium content detected ({total_chars:,} chars), using {max_workers} workers")
     
-    # Log batch information
+    logger.info(f"[{message_id}] 🚀 PARALLEL TRANSLATION: {len(segments)} segments, {max_workers} workers")
     
-    total_batches = len(batched_segments)
-    # Use a dictionary to store results in order
-    translated_batches = {}
+    # Create progress callback
+    async def progress_callback(message: str):
+        """Update status with progress messages"""
+        if update_status_func:
+            # Extract progress percentage if available
+            progress = 50  # Default mid-progress
+            if "%" in message:
+                try:
+                    progress_match = message.split("(")[1].split("%")[0]
+                    progress = int(progress_match)
+                except:
+                    pass
+            elif "Starting" in message:
+                progress = 10
+            elif "completed:" in message:
+                progress = 95
+            
+            if asyncio.iscoroutinefunction(update_status_func):
+                await update_status_func(
+                    message_id=message_id,
+                    progress=progress,
+                    status_type="started",
+                    message=f"🚀 PARALLEL: {message}"
+                )
+            else:
+                update_status_func(
+                    message_id=message_id,
+                    progress=progress,
+                    status_type="started",
+                    message=f"🚀 PARALLEL: {message}"
+                )
     
-    # Create tasks for concurrent execution
-    tasks = []
-    for i, batch in enumerate(batched_segments):
-        task = translate_batch(
-            i,  # batch_index
-            batch,
-            translate_func,
-            message_id,
-            model_name,
-            api_key,
-            source_lang,
-            target_lang,
-            update_status_func,
-            total_batches
-        )
-        tasks.append(task)
-    
-    # Execute all tasks concurrently using asyncio.gather
     try:
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Use the new parallel translation function
+        result = await translate_segments_parallel_ordered(
+            segments=segments,
+            model_name=model_name,
+            api_key=api_key,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            batch_size=batch_size,
+            max_workers=max_workers,
+            progress_callback=progress_callback
+        )
         
-        # Process results and track progress more accurately
-        completed = 0
-        for i, result in enumerate(results):
-            try:
-                if isinstance(result, Exception):
-                    error_message = f"Error processing batch {i+1}: {str(result)}"
-                    logger.error(f"[{message_id}] {error_message}")
-                    
-                    # Update status to failed for this batch
-                    if update_status_func:
-                        # Check if the update function is async
-                        if asyncio.iscoroutinefunction(update_status_func):
-                            await update_status_func(
-                                message_id=message_id,
-                                progress=max(10, int(((completed + 1) / total_batches) * 90) + 10),  # 10-100% range
-                                status_type="failed",
-                                message=f"Translation failed: {error_message}"
-                            )
-                        else:
-                            update_status_func(
-                                message_id=message_id,
-                                progress=max(10, int(((completed + 1) / total_batches) * 90) + 10),  # 10-100% range
-                                status_type="failed",
-                                message=f"Translation failed: {error_message}"
-                            )
-                    
-                    # Use fallback text for failed batch
-                    translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"
-                else:
-                    batch_index, translated_text = result
-                    translated_batches[batch_index] = translated_text
-                
-                # Update overall progress more accurately
-                completed += 1
-                # Progress from 10% to 100% (reserving 0-10% for segmentation)
-                overall_progress = min(100, max(10, int((completed / total_batches) * 90) + 10))
-                
-                # Log progress at key milestones
-                if completed % max(1, total_batches // 4) == 0 or completed == total_batches:
-                    logger.info(f"[{message_id}] Completed {completed}/{total_batches} batches ({overall_progress}%)")
-                
-                # Only update status at major milestones to avoid spam (individual batches update themselves)
-                if completed == total_batches:
-                    # Final update when all batches are complete
-                    if update_status_func:
-                        status_message = "All batches completed, finalizing translation"
-                        
-                        # Check if the update function is async
-                        if asyncio.iscoroutinefunction(update_status_func):
-                            await update_status_func(
-                                message_id,
-                                95,  # 95% - final assembly pending
-                                "started",
-                                status_message
-                            )
-                        else:
-                            update_status_func(
-                                message_id,
-                                95,  # 95% - final assembly pending
-                                "started",
-                                status_message
-                            )
-            except Exception as e:
-                error_message = f"Error processing result for batch {i+1}: {str(e)}"
-                logger.error(f"[{message_id}] {error_message}")
-                completed += 1
-    
+        # Add message_id and model info to result
+        result["message_id"] = message_id
+        result["model_used"] = model_name
+        
+        # Log performance metrics
+        if "performance" in result:
+            perf = result["performance"]
+            logger.info(f"[{message_id}] 🎉 PARALLEL COMPLETE: {perf.get('batches_completed', 0)} batches in {perf.get('total_time', 0):.1f}s with {perf.get('parallel_workers', 0)} workers")
+            logger.info(f"[{message_id}] Performance: {perf.get('batches_per_second', 0):.1f} batches/sec")
+        
+        return result
+        
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"[{message_id}] Critical error in asyncio.gather: {error_msg}")
-        logger.error(f"[{message_id}] Exception type: {type(e).__name__}")
+        error_message = f"Parallel translation failed: {str(e)}"
+        logger.error(f"[{message_id}] {error_message}")
         
-        # Add stack trace for debugging
-        import traceback
-        logger.error(f"[{message_id}] Stack trace: {traceback.format_exc()}")
+        if update_status_func:
+            if asyncio.iscoroutinefunction(update_status_func):
+                await update_status_func(
+                    message_id=message_id,
+                    progress=0,
+                    status_type="failed",
+                    message=error_message
+                )
+            else:
+                update_status_func(
+                    message_id=message_id,
+                    progress=0,
+                    status_type="failed",
+                    message=error_message
+                )
         
-        # If this is an asyncio-related error, we should not continue
-        if "asyncio" in error_msg.lower() or "coroutine" in error_msg.lower():
-            logger.error(f"[{message_id}] Asyncio error detected - this indicates a code issue, not a translation issue")
-            raise Exception(f"Asyncio execution error: {error_msg}")
-        
-        # Handle the case where the entire gather fails
-        logger.warning(f"[{message_id}] Creating fallback entries for all {total_batches} batches due to gather failure")
-        for i in range(total_batches):
-            if i not in translated_batches:
-                translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"
-    
-    # Check if we have all batches
-    missing_batches = [i for i in range(total_batches) if i not in translated_batches]
-    if missing_batches:
-        logger.error(f"[{message_id}] Missing {len(missing_batches)} batches: {missing_batches}")
-        # For missing batches, use placeholder
-        for i in missing_batches:
-            translated_batches[i] = f"<failed>Batch {i+1} translation failed</failed>"
-    
-    # Combine all translated batches in the correct order
-    ordered_translations = [translated_batches[i] for i in range(total_batches)]
-    
-    # Combine all translated batches
-    combined_translation = "\n".join(ordered_translations)
-    
-    return {
-        "status": "completed",
-        "message_id": message_id,
-        "translated_text": combined_translation,
-        "model_used": model_name
-    }
+        return {
+            "status": "failed",
+            "message_id": message_id,
+            "error": error_message,
+            "model_used": model_name
+        }
 
 def merge_translated_segments(segments: List[str], language: Optional[str] = None) -> str:
     """

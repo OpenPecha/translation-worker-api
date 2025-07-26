@@ -313,10 +313,15 @@ async def get_message_status(message_id: str):
         
         if not message_data:
             logger.warning(f"Message not found: {message_id}")
-            return ErrorResponse(
-                error="Message not found",
-                error_code="MESSAGE_NOT_FOUND",
-                details={"message_id": message_id}
+            # Raise HTTPException instead of returning ErrorResponse
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "error": "Message not found",
+                    "error_code": "MESSAGE_NOT_FOUND",
+                    "details": {"message_id": message_id}
+                }
             )
         
         # Parse status
@@ -361,13 +366,21 @@ async def get_message_status(message_id: str):
             created_at=created_at
         )
         
+    except HTTPException:
+        # Re-raise HTTPException (404 case)
+        raise
     except Exception as e:
         error_msg = f"Failed to get message status: {str(e)}"
         logger.error(error_msg)
-        return ErrorResponse(
-            error=error_msg,
-            error_code="STATUS_RETRIEVAL_ERROR",
-            details={"message_id": message_id, "exception_type": type(e).__name__}
+        # Raise HTTPException for 500 errors instead of returning ErrorResponse
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "error": error_msg,
+                "error_code": "STATUS_RETRIEVAL_ERROR",
+                "details": {"message_id": message_id, "exception_type": type(e).__name__}
+            }
         )
 
 @router.post("/{message_id}/status",
